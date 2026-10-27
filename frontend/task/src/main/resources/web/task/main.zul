@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?link rel="stylesheet" type="text/css" href="~./task/task.css"?>
+<zk>
+	<div viewModel="@id('vm') @init('com.example.ui.task.TaskViewModel')" sclass="task-module">
+
+		<groupbox mold="3d" sclass="card">
+			<caption label="@load(vm.editingId eq null ? 'New task' : 'Edit task')"/>
+			<grid sclass="form">
+				<columns>
+					<column width="120px"/>
+					<column/>
+				</columns>
+				<rows>
+					<row>
+						<label value="Title"/>
+						<textbox value="@bind(vm.title)" maxlength="200" hflex="1"
+							onOK="@command('save')"/>
+					</row>
+					<row>
+						<label value="Description"/>
+						<textbox value="@bind(vm.description)" maxlength="2000" rows="3" hflex="1"/>
+					</row>
+					<row>
+						<label value="Done"/>
+						<checkbox checked="@bind(vm.done)"/>
+					</row>
+				</rows>
+			</grid>
+			<hbox>
+				<button label="Save" iconSclass="z-icon-save" onClick="@command('save')"/>
+				<button label="Cancel" visible="@load(vm.editingId ne null)" onClick="@command('cancel')"/>
+			</hbox>
+		</groupbox>
+
+		<listbox model="@load(vm.tasks)" emptyMessage="No tasks yet" sclass="card">
+			<listhead>
+				<listheader label="#" width="60px"/>
+				<listheader label="Title"/>
+				<listheader label="Description"/>
+				<listheader label="Done" width="70px" align="center"/>
+				<listheader label="" width="200px"/>
+			</listhead>
+			<template name="model" var="task">
+				<listitem>
+					<listcell label="@load(task.id)"/>
+					<listcell label="@load(task.title)" sclass="@load(task.done ? 'done' : '')"/>
+					<listcell label="@load(task.description)"/>
+					<listcell>
+						<checkbox checked="@load(task.done)"
+							onCheck="@command('toggle', task=task)"/>
+					</listcell>
+					<listcell>
+						<button label="Edit" onClick="@command('edit', task=task)"/>
+						<button label="Delete" onClick="@command('delete', task=task)"/>
+					</listcell>
+				</listitem>
+			</template>
+		</listbox>
+	</div>
+</zk>

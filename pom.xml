@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>4.1.2</version>
+		<relativePath/>
+	</parent>
+
+	<groupId>com.example</groupId>
+	<artifactId>zk-spring-skeleton</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<packaging>pom</packaging>
+	<name>zk-spring-skeleton</name>
+
+	<modules>
+		<module>backend</module>
+		<module>frontend</module>
+	</modules>
+
+	<properties>
+		<java.version>25</java.version>
+		<zk.version>10.3.0.1-jakarta</zk.version>
+	</properties>
+
+	<!-- Internal modules are versioned together here; each module only declares the ones it needs. -->
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>com.example</groupId>
+				<artifactId>backend-common</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.example</groupId>
+				<artifactId>backend-task</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.example</groupId>
+				<artifactId>frontend-common</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.example</groupId>
+				<artifactId>frontend-task</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<profiles>
+		<!--
+			Try ZK 11: ./mvnw -Pzk11 package
+			ZK 11 is not released yet; this uses a nightly Eval build from ZK's evaluation repository.
+			Do not ship it to production.
+		-->
+		<profile>
+			<id>zk11</id>
+			<properties>
+				<zk.version>11.0.0-jakarta.FL.20261022-Eval</zk.version>
+			</properties>
+			<repositories>
+				<repository>
+					<id>zkoss-eval</id>
+					<name>ZK Evaluation Repository</name>
+					<url>https://mavensync.zkoss.org/eval</url>
+				</repository>
+			</repositories>
+		</profile>
+	</profiles>
+</project>

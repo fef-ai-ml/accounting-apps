@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?page title="ZK Spring Skeleton" contentType="text/html;charset=UTF-8"?>
+<?link rel="stylesheet" type="text/css" href="~./shell/app.css"?>
+<zk>
+	<div viewModel="@id('vm') @init('com.example.shell.ShellViewModel')" sclass="shell">
+		<div sclass="shell-header">
+			<label value="ZK Spring Skeleton" sclass="shell-title"/>
+			<hlayout sclass="shell-nav" children="@load(vm.modules)">
+				<template name="children">
+					<button label="@load(each.title)" sclass="@load(each eq vm.current ? 'active' : '')"
+						onClick="@command('open', module=each)"/>
+				</template>
+			</hlayout>
+		</div>
+
+		<!-- Module in the same app: its ZUL page is included. -->
+		<include src="@load(vm.entry)" visible="@load(not empty vm.entry)"/>
+		<!-- Module deployed as its own app: shown in an iframe. -->
+		<iframe src="@load(vm.remoteUrl)" visible="@load(not empty vm.remoteUrl)" sclass="shell-remote"/>
+	</div>
+</zk>
