@@ -68,10 +68,35 @@ once: `docker exec <postgres-container> psql -U app -d app -c 'CREATE DATABASE k
   next backend start). Rows edited directly in `iam.role_permission` reach running backends within 60 seconds; the UI
   picks them up at the next login.
 
-Manual check after changes: log in as each demo user and confirm viewer sees the list only, editor can create and edit
-but not delete, admin can do everything; log out and confirm the Keycloak login page appears again; stop the backend
-and confirm the UI shows an error notification rather than a stack trace; leave a page idle for more than 5 minutes
-(access-token lifetime), then act: it must still work (silent refresh).
+### Manual end-to-end check
+
+Run this after changes to login, permissions or the ZK wiring; the automated tests cannot cover the browser, Keycloak
+and ZK's own servlets together. Start the apps only after `./mvnw install -DskipTests` has finished: a shell started
+while the install is still running resolves stale jars and comes up without Spring Security.
+
+```
+./mvnw -q install -DskipTests
+./mvnw -pl backend/app spring-boot:run       # add env DB_URL=... if Postgres is not on localhost
+./mvnw -pl frontend/shell spring-boot:run
+```
+
+Use a private browser window per user, at `http://localhost:8081`:
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Open `http://localhost:8081` | Keycloak login page of realm `zk-spring` |
+| 2 | Log in as `viewer`/`viewer` | Header shows "Vera Viewer"; "Tasks" in the navigation; list visible; no form, no Edit/Delete, checkboxes disabled |
+| 3 | Click **Log out** | Back on the Keycloak login page (not signed in again automatically) |
+| 4 | Log in as `editor`/`editor` | Form and Edit visible, no Delete; creating and editing a task works |
+| 5 | Log in as `admin`/`admin` | Everything visible; deleting a task works |
+| 6 | `curl -i http://localhost:8080/api/tasks` | `401` with `WWW-Authenticate: Bearer` |
+| 7 | Stop the backend, reload the shell | Page renders with an "API error" notification, no stack trace; after restarting the backend and reloading, it works again |
+| 8 | Restart the shell with `env SERVER_SERVLET_SESSION_TIMEOUT=1m`, log in, wait 2 minutes, click Edit | Page reloads through login (Keycloak may sign you straight back in); no raw HTML or error dialog |
+| 9 | Leave a page idle for more than 5 minutes (access-token lifetime), then act | It still works (the shell refreshes the token silently) |
+| 10 | In the Keycloak admin console (`http://localhost:8180`, `admin`/`admin`) sign out the `editor` session, wait more than 5 minutes, click Save | Sent to `/logout`, then the Keycloak login page |
+
+If you are sent back to the login page after every login, the shell log shows `API call unauthorized` with the
+backend's `WWW-Authenticate` reason (usually an issuer mismatch, see above).
 
 Tests: `./mvnw verify` (backend tests start PostgreSQL through Testcontainers, so Docker must be usable).
 
