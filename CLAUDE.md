@@ -73,7 +73,11 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
 
 - Verified: whole build and all tests (`./mvnw verify`), including backend tests against Testcontainers Postgres and a
   real signed token through decoder, converter, `iam` resolver and `@PreAuthorize` (`TokenToPermissionsTests`).
-- Not yet verified: the manual login/logout checklist (viewer/editor/admin) against Keycloak 26.8.1 on the home-lab.
+- Verified 2026-10-28 by hand against Keycloak 26.8.1 on the home-lab (README "Manual end-to-end check" rows 1–6):
+  login redirect, viewer/editor/admin permissions in the UI, logout back to the Keycloak login page, 401 + Bearer from
+  the API.
+- Not yet verified by hand: README checklist rows 7–10 (backend down, ZK session timeout, silent token refresh,
+  Keycloak session ended).
 - Not built yet: see "Follow-ups" in `docs/superpowers/specs/2026-10-28-auth-keycloak-iam-design.md` (admin UI for
   role permissions, REST PermissionResolver for split services, production Keycloak, ...), pagination, a second
   example module, ArchUnit/Spring Modulith boundary tests.
