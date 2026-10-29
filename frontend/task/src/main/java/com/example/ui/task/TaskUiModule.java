@@ -18,7 +18,7 @@ public class TaskUiModule {
 
 	@Bean
 	UiModule taskUi() {
-		return UiModule.embedded(ID, "Tasks", 10, "~./task/main.zul");
+		return UiModule.embedded(ID, "Tasks", 10, "~./task/main.zul").withPermission("task:read");
 	}
 
 }

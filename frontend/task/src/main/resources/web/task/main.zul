@@ -3,7 +3,7 @@
 <zk>
 	<div viewModel="@id('vm') @init('com.example.ui.task.TaskViewModel')" sclass="task-module">
 
-		<groupbox mold="3d" sclass="card">
+		<groupbox mold="3d" sclass="card" visible="@load(vm.canWrite)">
 			<caption label="@load(vm.editingId eq null ? 'New task' : 'Edit task')"/>
 			<grid sclass="form">
 				<columns>
@@ -46,12 +46,12 @@
 					<listcell label="@load(task.title)" sclass="@load(task.done ? 'done' : '')"/>
 					<listcell label="@load(task.description)"/>
 					<listcell>
-						<checkbox checked="@load(task.done)"
+						<checkbox checked="@load(task.done)" disabled="@load(not vm.canWrite)"
 							onCheck="@command('toggle', task=task)"/>
 					</listcell>
 					<listcell>
-						<button label="Edit" onClick="@command('edit', task=task)"/>
-						<button label="Delete" onClick="@command('delete', task=task)"/>
+						<button label="Edit" visible="@load(vm.canWrite)" onClick="@command('edit', task=task)"/>
+						<button label="Delete" visible="@load(vm.canDelete)" onClick="@command('delete', task=task)"/>
 					</listcell>
 				</listitem>
 			</template>

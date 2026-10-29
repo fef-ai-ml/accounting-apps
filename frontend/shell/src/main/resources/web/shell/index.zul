@@ -11,6 +11,10 @@
 						onClick="@command('open', module=each)"/>
 				</template>
 			</hlayout>
+			<div sclass="shell-user">
+				<label value="@load(vm.userName)"/>
+				<a href="/logout" label="Log out"/>
+			</div>
 		</div>
 
 		<!-- Module in the same app: its ZUL page is included. -->
