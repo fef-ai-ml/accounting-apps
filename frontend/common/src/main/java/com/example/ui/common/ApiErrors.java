@@ -1,5 +1,8 @@
 package com.example.ui.common;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.web.client.HttpClientErrorException;
 import org.zkoss.zk.ui.Executions;
@@ -17,6 +20,8 @@ public final class ApiErrors {
 		OTHER
 	}
 
+	private static final Logger log = LoggerFactory.getLogger(ApiErrors.class);
+
 	private ApiErrors() {
 	}
 
@@ -30,15 +35,32 @@ public final class ApiErrors {
 		return Kind.OTHER;
 	}
 
+	private static String wwwAuthenticate(RuntimeException ex) {
+		if (ex instanceof HttpClientErrorException.Unauthorized unauthorized
+				&& unauthorized.getResponseHeaders() != null) {
+			return unauthorized.getResponseHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE);
+		}
+		return null;
+	}
+
 	/** Must be called while handling a ZK event (a view model command or {@code @Init}). */
 	public static void show(RuntimeException ex) {
 		switch (classify(ex)) {
-			case FORBIDDEN -> Clients.showNotification("You don't have permission to do that", "warning", null,
-					"middle_center", 3000);
-			// Clears the shell session and goes through Keycloak login again.
-			case REAUTHENTICATE -> Executions.sendRedirect("/logout");
-			case OTHER -> Clients.showNotification("API error: " + ex.getMessage(), "error", null, "middle_center",
-					4000);
+			case FORBIDDEN -> {
+				log.info("API call forbidden: {}", ex.getMessage());
+				Clients.showNotification("You don't have permission to do that", "warning", null, "middle_center",
+						3000);
+			}
+			case REAUTHENTICATE -> {
+				log.warn("API call unauthorized, sending the user to log in again (WWW-Authenticate: {})",
+						wwwAuthenticate(ex), ex);
+				// Clears the shell session and goes through Keycloak login again.
+				Executions.sendRedirect("/logout");
+			}
+			case OTHER -> {
+				log.error("API call failed", ex);
+				Clients.showNotification("API error: " + ex.getMessage(), "error", null, "middle_center", 4000);
+			}
 		}
 	}
 
