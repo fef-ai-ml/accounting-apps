@@ -2,6 +2,8 @@ package com.example.iam;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.GrantedAuthority;
@@ -40,7 +42,10 @@ class IamController {
 	@GetMapping("/roles")
 	@PreAuthorize("hasAuthority('iam:read')")
 	List<RoleResponse> roles() {
-		return repository.permissionsByRole().entrySet().stream()
+		return repository.findAllOrderedByRoleAndPermission().stream()
+				.collect(Collectors.groupingBy(rp -> rp.getId().role(), TreeMap::new,
+						Collectors.mapping(rp -> rp.getId().permissionCode(), Collectors.toList())))
+				.entrySet().stream()
 				.map(entry -> new RoleResponse(entry.getKey(), entry.getValue()))
 				.toList();
 	}

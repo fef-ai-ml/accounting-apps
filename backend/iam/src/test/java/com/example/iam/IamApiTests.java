@@ -23,7 +23,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(classes = IamApiTests.TestApp.class,
-		properties = "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9/realms/test")
+		properties = {"spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9/realms/test",
+				"spring.jpa.hibernate.ddl-auto=validate"})
 @AutoConfigureMockMvc
 class IamApiTests {
 

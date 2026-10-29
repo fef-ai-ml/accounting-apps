@@ -1,42 +1,22 @@
 package com.example.iam;
 
-import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.Repository;
+import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
-@Repository
-class RolePermissionRepository {
+@Transactional(readOnly = true)
+interface RolePermissionRepository extends Repository<RolePermission, RolePermissionId> {
 
-	private final JdbcClient jdbc;
+	/** Union of the permissions of the given roles. Callers must not pass an empty collection ("in ()"). */
+	@Query("select distinct rp.id.permissionCode from RolePermission rp where rp.id.role in :roles")
+	Set<String> findPermissionCodesByRoleIn(@Param("roles") Collection<String> roles);
 
-	RolePermissionRepository(JdbcClient jdbc) {
-		this.jdbc = jdbc;
-	}
-
-	/** Union of the permissions of the given roles. */
-	Set<String> permissionsFor(Set<String> roles) {
-		if (roles.isEmpty()) {
-			return Set.of(); // "IN ()" is not valid SQL
-		}
-		return Set.copyOf(jdbc.sql("SELECT DISTINCT permission_code FROM iam.role_permission WHERE role IN (:roles)")
-				.param("roles", roles)
-				.query(String.class)
-				.list());
-	}
-
-	/** Every role that has at least one permission, with its permissions, both sorted. */
-	Map<String, List<String>> permissionsByRole() {
-		Map<String, List<String>> result = new TreeMap<>();
-		jdbc.sql("SELECT role, permission_code FROM iam.role_permission ORDER BY role, permission_code")
-				.query((rs, rowNum) -> Map.entry(rs.getString("role"), rs.getString("permission_code")))
-				.list()
-				.forEach(row -> result.computeIfAbsent(row.getKey(), role -> new ArrayList<>()).add(row.getValue()));
-		return result;
-	}
+	@Query("select rp from RolePermission rp order by rp.id.role, rp.id.permissionCode")
+	List<RolePermission> findAllOrderedByRoleAndPermission();
 
 }

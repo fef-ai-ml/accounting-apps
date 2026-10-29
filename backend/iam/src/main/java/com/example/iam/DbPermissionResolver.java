@@ -36,7 +36,9 @@ public class DbPermissionResolver implements PermissionResolver {
 
 	Set<String> permissionsForRoles(Set<String> roles) {
 		// Set equality ignores order, so {EDITOR, VIEWER} and {VIEWER, EDITOR} share one entry.
-		return cache.get(Set.copyOf(roles), repository::permissionsFor);
+		return cache.get(Set.copyOf(roles), key -> key.isEmpty()
+				? Set.of() // "IN ()" is not valid SQL
+				: Set.copyOf(repository.findPermissionCodesByRoleIn(key)));
 	}
 
 }

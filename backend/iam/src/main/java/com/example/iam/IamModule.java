@@ -4,10 +4,12 @@ import java.util.Arrays;
 
 import org.flywaydb.core.api.Location;
 import org.springframework.boot.flyway.autoconfigure.FlywayConfigurationCustomizer;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 import com.example.security.SecurityModule;
 
@@ -21,6 +23,8 @@ import com.example.security.SecurityModule;
 @Configuration(proxyBeanMethods = false)
 @Import(SecurityModule.class)
 @ComponentScan(basePackageClasses = IamModule.class)
+@EntityScan(basePackageClasses = IamModule.class)
+@EnableJpaRepositories(basePackageClasses = IamModule.class)
 public class IamModule {
 
 	@Bean
