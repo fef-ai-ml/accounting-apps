@@ -61,7 +61,7 @@ Shared resource-server wiring. No database, no domain code. Entered through `Sec
 - Stateless `SecurityFilterChain`: `/api/**` authenticated; `/actuator/health`, `/v3/api-docs/**`, `/swagger-ui/**`,
   `/swagger-ui.html` permitted. No HTTP session, CSRF disabled (bearer tokens only).
 - JWT validation via `spring.security.oauth2.resourceserver.jwt.issuer-uri`. Boot resolves the JWKS lazily, so the app
-  starts while Keycloak is down.
+  starts while Keycloak is down. Only access tokens are accepted (`typ` = `Bearer`); ID tokens are rejected.
 - `@EnableMethodSecurity` so modules can use `@PreAuthorize`.
 - `KeycloakJwtAuthenticationConverter`: calls `PermissionResolver.permissionsFor(jwt)` and returns a
   `JwtAuthenticationToken` whose authorities are the permission codes (e.g. `task:write`) and whose name is the
@@ -143,7 +143,7 @@ role mappings by adding a migration under `backend/iam/src/main/resources/db/mig
     (`/protocol/openid-connect/auth`, `/token`, `/certs`, `/userinfo`, `/logout`) instead of OIDC discovery, so the
     shell starts without Keycloak.
   - Logout on `GET /logout`: invalidates the session, then RP-initiated logout at Keycloak
-    (`OidcClientInitiatedLogoutSuccessHandler`), post-logout redirect to `/`.
+    (own `KeycloakLogoutSuccessHandler`, because Spring's handler needs `end_session_endpoint` from discovery, which is not used), post-logout redirect to `/`.
   - CSRF ignored for `/zkau/**` (ZK binds every AU request to a desktop in the user's session; Spring's CSRF token
     would reject every ZK event). Kept for everything else.
   - `POST /zkau` permitted without login: without a session there is no ZK desktop, so ZK's timeout handling answers.

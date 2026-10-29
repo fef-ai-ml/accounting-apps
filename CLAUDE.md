@@ -47,8 +47,9 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
 - Run apps with `./mvnw install -DskipTests` first so module jars exist in the local repo, then
   `./mvnw -pl backend/app spring-boot:run` and `./mvnw -pl frontend/shell spring-boot:run`.
 - Token issuer must match exactly: `KC_HOSTNAME` (compose `KEYCLOAK_URL`) and the apps' `KEYCLOAK_ISSUER_URI` must use
-  the same scheme, host and port, or every API call is 401. For a Keycloak on another host, forward port 8180 over SSH
-  and keep the `localhost` defaults; the realm's `sslRequired=external` rejects plain HTTP from non-private addresses
+  the same scheme, host and port, or every API call is 401 and the shell sends you back to the login page after every
+  login (the shell logs `API call unauthorized` with the backend's `WWW-Authenticate` reason). For a Keycloak on
+  another host, forward port 8180 over SSH and keep the `localhost` defaults; the realm's `sslRequired=external` rejects plain HTTP from non-private addresses
   such as Tailscale's 100.x.
 - `infra/postgres/init/` only runs on an empty Postgres volume; create the `keycloak` database by hand otherwise.
 - View models must catch `RuntimeException` around API calls and pass it to `ApiErrors.show(...)`: a failed token

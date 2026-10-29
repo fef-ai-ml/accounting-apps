@@ -30,7 +30,8 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
     ports:
-      - "8180:8080"
+      # Reached through an SSH tunnel (ssh -L 8180:localhost:8180); bind all interfaces only if you serve it over HTTPS.
+      - "127.0.0.1:8180:8080"
     depends_on:
       postgres:
         condition: service_healthy

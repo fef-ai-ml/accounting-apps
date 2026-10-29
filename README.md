@@ -47,7 +47,8 @@ Keycloak and the apps must agree on one URL for Keycloak, because tokens carry i
 everywhere are `http://localhost:8180`. When Keycloak runs on another host (e.g. a home-lab), keep those defaults and
 forward the port: `ssh -fN -L 8180:localhost:8180 <user>@<host>`. Pointing the apps at `http://<host>:8180` instead
 only works if Keycloak sees the browser as a private address or is served over HTTPS: the realm keeps Keycloak's
-default `sslRequired=external`. Then set `KEYCLOAK_URL=http://<host>:8180` for compose and
+default `sslRequired=external`. It also requires changing the `ports` binding of `keycloak` in `compose.yaml` to
+`"8180:8080"` (it is bound to `127.0.0.1` by default). Then set `KEYCLOAK_URL=http://<host>:8180` for compose and
 `KEYCLOAK_ISSUER_URI=http://<host>:8180/realms/zk-spring` for both apps.
 
 `infra/keycloak/zk-spring-realm.json` is for development only (demo users whose password is their username, a fixed
@@ -63,11 +64,14 @@ once: `docker exec <postgres-container> psql -U app -d app -c 'CREATE DATABASE k
   `iam.role_permission`). Endpoints check permissions only: `@PreAuthorize("hasAuthority('task:write')")`.
 - The ZK shell is the OAuth2 client; tokens stay in its HttpSession and every `ModuleRestClients` client sends the
   user's access token. View models use `CurrentUser.can(...)` to hide what the user may not do; the backend enforces.
-- Change what a role may do with a migration in `backend/iam/src/main/resources/db/migration/iam/`. Running backends
-  pick it up within 60 seconds; the UI after the next login.
+- Change what a role may do with a migration in `backend/iam/src/main/resources/db/migration/iam/` (applied at the
+  next backend start). Rows edited directly in `iam.role_permission` reach running backends within 60 seconds; the UI
+  picks them up at the next login.
 
 Manual check after changes: log in as each demo user and confirm viewer sees the list only, editor can create and edit
-but not delete, admin can do everything; log out and confirm the Keycloak login page appears again.
+but not delete, admin can do everything; log out and confirm the Keycloak login page appears again; stop the backend
+and confirm the UI shows an error notification rather than a stack trace; leave a page idle for more than 5 minutes
+(access-token lifetime), then act: it must still work (silent refresh).
 
 Tests: `./mvnw verify` (backend tests start PostgreSQL through Testcontainers, so Docker must be usable).
 
@@ -115,12 +119,13 @@ except the app that deploys it. (Today nothing does, so this is a no-op until yo
   the new database (default `jdbc:postgresql://localhost:5432/task`).
 
 `TaskModule` already brings its own entities, repositories, controller, error handling and Flyway location, so no module
-code changes.
+code changes. `backend/task`'s own tests (`TaskApiTests`) already boot the module on its own, which is the same shape as
+this service.
+
 `TaskModule` also brings `SecurityModule`, but the new service has no `iam`, so it starts with the fail-closed
 resolver (every call 403, with a startup warning). Before routing traffic to it, add the REST `PermissionResolver`
 described in follow-up 2 of `docs/superpowers/specs/2026-10-28-auth-keycloak-iam-design.md`, and give the service
-`KEYCLOAK_ISSUER_URI`. `backend/task`'s own tests (`TaskApiTests`) already boot the module on its own, which is the same shape as
-this service.
+`KEYCLOAK_ISSUER_URI`.
 
 **2. Give it its own database.** Create the database and let Flyway build the schema from the module's migrations on first
 start. To carry existing data over from the shared database:
