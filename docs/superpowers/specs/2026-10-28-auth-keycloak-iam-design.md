@@ -136,7 +136,7 @@ role mappings by adding a migration under `backend/iam/src/main/resources/db/mig
 
 ### `frontend/common` (changed)
 
-- `UiSecurity` (new, imported by the shell next to `ZkSupport`):
+- `UiSecurity` (new, picked up by `ZkSupport`'s component scan, so every ZK app gets login):
   - `oauth2Login` with client registration `keycloak` (client id `zk-shell`); every request authenticated except
     `/actuator/health`.
   - Provider endpoints configured explicitly from `KEYCLOAK_ISSUER_URI`
@@ -146,6 +146,7 @@ role mappings by adding a migration under `backend/iam/src/main/resources/db/mig
     (`OidcClientInitiatedLogoutSuccessHandler`), post-logout redirect to `/`.
   - CSRF ignored for `/zkau/**` (ZK binds every AU request to a desktop in the user's session; Spring's CSRF token
     would reject every ZK event). Kept for everything else.
+  - `POST /zkau` permitted without login: without a session there is no ZK desktop, so ZK's timeout handling answers.
   - `X-Frame-Options: SAMEORIGIN`, so remote modules can still be framed behind one origin (README §B.3).
 - `ModuleRestClients`: the shared builder gets Spring Security's `OAuth2ClientHttpRequestInterceptor` backed by an
   `OAuth2AuthorizedClientManager` (authorization code + refresh token). Every module client sends the current user's
@@ -156,10 +157,10 @@ role mappings by adding a migration under `backend/iam/src/main/resources/db/mig
   `getUsername()`, `can(String permission)`. Frontend DTO is its own class (no backend imports), with JavaBean getters.
 - `UiModule`: new optional `requiredPermission` (nullable). `embedded(...)` and `remote(...)` keep their signatures and
   default it to `null`; a `withPermission(String)` copy method sets it.
-- Error handling, configured once in ZK's `zk.xml` error pages for AU requests:
+- Error handling: view models catch `RuntimeException` around API calls and call `ApiErrors.show(ex)`:
   - API 403 → notification "You don't have permission to do that", page stays usable.
-  - API 401 (refresh token expired, Keycloak session ended) → full page reload, which goes through login.
-  - ZK session timeout URI → `/`, same effect.
+  - API 401 or failed token refresh → redirect to `/logout`, which clears the shell session and goes through login.
+  - ZK session timeout (`metainfo/zk/zk.xml` timeout URI) → `/`, which goes through login.
 
 ### `frontend/shell` (changed)
 
@@ -184,7 +185,8 @@ role mappings by adding a migration under `backend/iam/src/main/resources/db/mig
 - `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` from env, default `admin` / `admin` (dev only).
 - `KC_HOSTNAME` from env (`KEYCLOAK_URL`, default `http://localhost:8180`). It must be the URL that both the browser
   and the backend use: the token's `iss` must equal the backend's `issuer-uri` exactly, or every call is 401.
-- `infra/postgres/init/01-keycloak.sql` mounted into `/docker-entrypoint-initdb.d/` creates database `keycloak`.
+- `infra/postgres/init/01-keycloak.sql`, copied into the
+  `zk-spring-postgres` image built from `infra/postgres/Dockerfile`, creates database `keycloak`.
   This only runs on an empty volume; existing installs (including the current home-lab) run
   `CREATE DATABASE keycloak OWNER app;` once by hand.
 
@@ -195,6 +197,8 @@ role mappings by adding a migration under `backend/iam/src/main/resources/db/mig
   `http://localhost:8081/*`, fixed dev client secret.
 - Realm roles `ADMIN`, `EDITOR`, `VIEWER`.
 - Users `admin`, `editor`, `viewer` (password = username, dev only), one role each.
+- Copied into the `zk-spring-keycloak` image (`infra/keycloak/Dockerfile`) rather than bind-mounted, so compose works
+  against a remote daemon.
 - Keycloak imports a realm only if it does not exist, so changes made later in the admin console survive restarts.
 
 ## Testing

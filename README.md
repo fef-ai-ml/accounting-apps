@@ -11,10 +11,12 @@ One Maven module per bounded context on each side, assembled by a thin deployabl
 ```
 backend/
   common/   shared kernel: error handling only, no domain code
+  security/ shared resource-server wiring: JWT validation, PermissionResolver, method security
+  iam/      "iam" bounded context: role -> permission mappings (own schema), /api/iam/me
   task/     "task" bounded context: controller, service, entity, own Postgres schema + migrations
   app/      Spring Boot app (port 8080): imports the context modules it deploys
 frontend/
-  common/   ZK servlet wiring, UiModule contract, per-module REST client factory
+  common/   ZK servlet wiring, Keycloak login, UiModule contract, per-module REST client factory (bearer relay)
   task/     "task" UI module: ZUL pages, view models, client for the task API
   shell/    Spring Boot app (port 8081): layout + navigation, hosts the UI modules
 ```
@@ -31,12 +33,41 @@ Rules that keep the modules separable:
 ## Run
 
 ```
-docker compose up -d                                  # PostgreSQL on :5432
+docker compose up -d                                  # PostgreSQL :5432, Keycloak :8180 (realm zk-spring)
 ./mvnw -pl backend/app spring-boot:run                # API  http://localhost:8080  (Swagger UI: /swagger-ui.html)
-./mvnw -pl frontend/shell spring-boot:run             # UI   http://localhost:8081
+./mvnw -pl frontend/shell spring-boot:run             # UI   http://localhost:8081  (log in through Keycloak)
 ```
 
 (After the first `./mvnw install -DskipTests`, so the module jars are in your local repo.)
+
+Demo users (dev only, password = username): `admin` (everything), `editor` (read + write), `viewer` (read).
+Keycloak admin console: `http://localhost:8180`, `admin`/`admin`.
+
+Keycloak and the apps must agree on one URL for Keycloak, because tokens carry it as their issuer. The defaults
+everywhere are `http://localhost:8180`. When Keycloak runs on another host (e.g. a home-lab), keep those defaults and
+forward the port: `ssh -fN -L 8180:localhost:8180 <user>@<host>`. Pointing the apps at `http://<host>:8180` instead
+only works if Keycloak sees the browser as a private address or is served over HTTPS: the realm keeps Keycloak's
+default `sslRequired=external`. Then set `KEYCLOAK_URL=http://<host>:8180` for compose and
+`KEYCLOAK_ISSUER_URI=http://<host>:8180/realms/zk-spring` for both apps.
+
+`infra/keycloak/zk-spring-realm.json` is for development only (demo users whose password is their username, a fixed
+client secret). Never import it into a production Keycloak.
+
+Postgres creates the `keycloak` database only on an empty volume (`infra/postgres/init/`). On an existing volume run
+once: `docker exec <postgres-container> psql -U app -d app -c 'CREATE DATABASE keycloak OWNER app;'`.
+
+## Login and permissions
+
+- Keycloak says who the user is and which realm roles they hold (`ADMIN`, `EDITOR`, `VIEWER`).
+- The `iam` module maps roles to permissions named `<module>:<action>` (tables `iam.permission`,
+  `iam.role_permission`). Endpoints check permissions only: `@PreAuthorize("hasAuthority('task:write')")`.
+- The ZK shell is the OAuth2 client; tokens stay in its HttpSession and every `ModuleRestClients` client sends the
+  user's access token. View models use `CurrentUser.can(...)` to hide what the user may not do; the backend enforces.
+- Change what a role may do with a migration in `backend/iam/src/main/resources/db/migration/iam/`. Running backends
+  pick it up within 60 seconds; the UI after the next login.
+
+Manual check after changes: log in as each demo user and confirm viewer sees the list only, editor can create and edit
+but not delete, admin can do everything; log out and confirm the Keycloak login page appears again.
 
 Tests: `./mvnw verify` (backend tests start PostgreSQL through Testcontainers, so Docker must be usable).
 
@@ -44,6 +75,9 @@ Tests: `./mvnw verify` (backend tests start PostgreSQL through Testcontainers, s
 
 1. `backend/<name>`: copy `backend/task`, rename packages, schema, migration folder; import its `*Module` in `backend/app`.
 2. `frontend/<name>`: copy `frontend/task`, rename; define a `UiModule` bean; import its `*UiModule` in `frontend/shell`.
+3. Permissions: add `<name>:<action>` codes and their role mappings in a new migration under
+   `backend/iam/src/main/resources/db/migration/iam/`, protect endpoints with `@PreAuthorize`, and give the UI module
+   `.withPermission("<name>:read")`.
 
 ## Splitting a module out later
 
@@ -81,7 +115,11 @@ except the app that deploys it. (Today nothing does, so this is a no-op until yo
   the new database (default `jdbc:postgresql://localhost:5432/task`).
 
 `TaskModule` already brings its own entities, repositories, controller, error handling and Flyway location, so no module
-code changes. `backend/task`'s own tests (`TaskApiTests`) already boot the module on its own, which is the same shape as
+code changes.
+`TaskModule` also brings `SecurityModule`, but the new service has no `iam`, so it starts with the fail-closed
+resolver (every call 403, with a startup warning). Before routing traffic to it, add the REST `PermissionResolver`
+described in follow-up 2 of `docs/superpowers/specs/2026-10-28-auth-keycloak-iam-design.md`, and give the service
+`KEYCLOAK_ISSUER_URI`. `backend/task`'s own tests (`TaskApiTests`) already boot the module on its own, which is the same shape as
 this service.
 
 **2. Give it its own database.** Create the database and let Flyway build the schema from the module's migrations on first
