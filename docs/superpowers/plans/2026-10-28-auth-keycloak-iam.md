@@ -39,17 +39,26 @@ Caffeine 3.2.4 (Boot-managed), Keycloak 26.8.1, Testcontainers.
 
 ### Prerequisites for running tests
 
-Backend tests use Testcontainers. On this Mac `DOCKER_HOST` points at the home-lab Docker socket
-(`unix:///Users/fef/.local/share/containers/home-lab.sock`). When the socket is connected, containers start on the
-home-lab, so Testcontainers must be told where their ports are (fish syntax):
+Backend tests use Testcontainers. On this Mac `DOCKER_HOST` is `unix:///Users/fef/.local/share/containers/home-lab.sock`,
+an SSH-forwarded copy of the home-lab's **rootless Podman 5.8.2** API socket (`/run/user/1000/podman/podman.sock`).
+Compose (the standalone `docker-compose` v5.6.0) and Testcontainers both run on the Mac and start containers on the
+home-lab. Verified 2026-10-28: Ryuk starts and the existing `TaskApiTests` pass this way. Fish syntax:
 
 ```fish
-set -x TESTCONTAINERS_HOST_OVERRIDE <homelab-ip>
+# Start the tunnel if `docker ps` says "Cannot connect to the Docker daemon"
+rm -f ~/.local/share/containers/home-lab.sock
+ssh -fNT -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o StreamLocalBindUnlink=yes \
+    -L $HOME/.local/share/containers/home-lab.sock:/run/user/1000/podman/podman.sock fef@home-lab
+
+# Testcontainers: container ports are on the home-lab, and Ryuk must mount the Podman socket path *on the home-lab*
+set -Ux TESTCONTAINERS_HOST_OVERRIDE home-lab
+set -Ux TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE /run/user/1000/podman/podman.sock
 docker ps    # must work before running backend tests
 ```
 
-If `docker ps` fails, connect the home-lab socket first (or use the local `podman` context). Frontend tests need no
-Docker.
+Because the daemon is remote, compose **bind mounts of repo files do not work** (the paths exist on the Mac, not on
+the home-lab). Task 1 therefore copies its files into small images with `build:`; compose sends the build context
+through the socket. Frontend tests need no Docker.
 
 ### Deliberate deviations from the spec (approved in planning; Task 9 records them in the spec)
 
@@ -62,6 +71,9 @@ Docker.
 4. `POST /zkau` (ZK's AJAX endpoint) is `permitAll` at the Spring Security level. Without a session there is no ZK
    desktop, so ZK answers with its own session-timeout handling instead of the browser receiving Keycloak's HTML.
    Everything else, including `/zkau/web/**` (ZUL pages and resources), requires login.
+5. The Postgres init script and the realm file are copied into small images (`infra/postgres/Dockerfile`,
+   `infra/keycloak/Dockerfile`, compose `build:`) instead of being bind-mounted, because compose here drives a remote
+   daemon where repo paths do not exist.
 
 ## Review Focus
 
@@ -89,8 +101,10 @@ Inputs the spec implies but does not spell out, most likely to bite first:
 ## File Structure
 
 ```
-compose.yaml                                              modify: keycloak service, postgres init mount
+compose.yaml                                              modify: keycloak service, both services built from infra/
+infra/postgres/Dockerfile                                 create: postgres:17-alpine + init scripts
 infra/postgres/init/01-keycloak.sql                       create: CREATE DATABASE keycloak
+infra/keycloak/Dockerfile                                 create: keycloak:26.8.1 + realm file
 infra/keycloak/zk-spring-realm.json                       create: realm, client, roles, demo users
 pom.xml                                                   modify: dependencyManagement for new modules
 backend/pom.xml                                           modify: modules security, iam
@@ -155,8 +169,13 @@ README.md, CLAUDE.md, docs/superpowers/specs/2026-10-28-auth-keycloak-iam-design
 
 **Files:**
 - Modify: `compose.yaml`
+- Create: `infra/postgres/Dockerfile`
 - Create: `infra/postgres/init/01-keycloak.sql`
+- Create: `infra/keycloak/Dockerfile`
 - Create: `infra/keycloak/zk-spring-realm.json`
+
+Files are copied into images instead of bind-mounted, so compose also works against a remote daemon (this Mac drives
+the home-lab's Podman through a socket; see Prerequisites).
 
 **Interfaces:**
 - Produces: realm `zk-spring`; confidential client `zk-shell` with secret `zk-shell-dev-secret`, redirect
@@ -246,14 +265,35 @@ CREATE DATABASE keycloak OWNER app;
 First/last name and email are set because Keycloak's default user profile otherwise forces an "update account" form
 on first login.
 
-- [ ] **Step 3: Add Keycloak to `compose.yaml`**
+- [ ] **Step 3: Create the two image definitions**
+
+`infra/postgres/Dockerfile`:
+
+```dockerfile
+# Init scripts are copied in, not bind-mounted, so compose also works against a remote Docker/Podman daemon.
+# They run only when the data volume is empty.
+FROM docker.io/library/postgres:17-alpine
+COPY init/ /docker-entrypoint-initdb.d/
+```
+
+`infra/keycloak/Dockerfile`:
+
+```dockerfile
+# The realm file is copied in, not bind-mounted, so compose also works against a remote Docker/Podman daemon.
+# "start-dev --import-realm" imports it only if the realm does not exist yet.
+FROM quay.io/keycloak/keycloak:26.8.1
+COPY zk-spring-realm.json /opt/keycloak/data/import/
+```
+
+- [ ] **Step 4: Add Keycloak to `compose.yaml`**
 
 Replace the whole file with:
 
 ```yaml
 services:
   postgres:
-    image: postgres:17-alpine
+    build: infra/postgres
+    image: zk-spring-postgres:17
     environment:
       POSTGRES_DB: app
       POSTGRES_USER: app
@@ -262,8 +302,6 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # Runs only on an empty volume; see infra/postgres/init/01-keycloak.sql
-      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d app"]
       interval: 5s
@@ -271,7 +309,8 @@ services:
       retries: 10
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.8.1
+    build: infra/keycloak
+    image: zk-spring-keycloak:26.8.1
     command: start-dev --import-realm
     environment:
       KC_DB: postgres
@@ -284,8 +323,6 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
     ports:
       - "8180:8080"
-    volumes:
-      - ./infra/keycloak:/opt/keycloak/data/import:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -294,29 +331,33 @@ volumes:
   pgdata:
 ```
 
-- [ ] **Step 4: Validate the compose file and realm JSON locally**
+- [ ] **Step 5: Validate the compose file and realm JSON locally**
 
-Run: `docker compose config --quiet; and python3 -m json.tool infra/keycloak/zk-spring-realm.json > /dev/null; and echo OK`
+Run: `docker-compose config --quiet; and python3 -m json.tool infra/keycloak/zk-spring-realm.json > /dev/null; and echo OK`
 Expected: `OK`
 
-- [ ] **Step 5: Start Keycloak on the home-lab and verify the realm** (manual, on the home-lab host after pulling the branch)
+- [ ] **Step 6: Start Keycloak on the home-lab and verify the realm** (manual, from the Mac with the tunnel up; see
+  Prerequisites)
 
 ```fish
 docker exec zk-spring-postgres-1 psql -U app -d app -c 'CREATE DATABASE keycloak OWNER app;'
-env KEYCLOAK_URL=http://<homelab-ip>:8180 docker compose up -d keycloak
-docker compose logs -f keycloak    # wait for "Imported realm zk-spring" and "Listening on: http://0.0.0.0:8080"
+env KEYCLOAK_URL=http://home-lab:8180 docker-compose up -d --build
+docker-compose logs -f keycloak    # wait for "Imported realm zk-spring" and "Listening on: http://0.0.0.0:8080"
 ```
 
-From the Mac:
+`up -d --build` also recreates `postgres` from the new `zk-spring-postgres:17` image; the `pgdata` volume and its data
+are kept (the init script does not run again on it, hence the manual `CREATE DATABASE` above). Then:
 
 ```fish
-curl -s http://<homelab-ip>:8180/realms/zk-spring/.well-known/openid-configuration | python3 -c 'import sys,json; print(json.load(sys.stdin)["issuer"])'
+curl -s http://home-lab:8180/realms/zk-spring/.well-known/openid-configuration | python3 -c 'import sys,json; print(json.load(sys.stdin)["issuer"])'
+docker exec zk-spring-postgres-1 psql -U app -d app -c 'select count(*) from task.task;'
 ```
 
-Expected: `http://<homelab-ip>:8180/realms/zk-spring`. Then open `http://<homelab-ip>:8180/realms/zk-spring/account`
-in a browser and log in as `editor` / `editor`: the account page opens with no "update profile" form.
+Expected: `http://home-lab:8180/realms/zk-spring`, and the task count you had before (data survived). Then open
+`http://home-lab:8180/realms/zk-spring/account` in a browser and log in as `editor` / `editor`: the account page
+opens with no "update profile" form.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```fish
 git add compose.yaml infra/
@@ -2880,10 +2921,10 @@ Expected: BUILD SUCCESS.
 ```fish
 ./mvnw -q install -DskipTests
 # terminal 1
-env DB_URL=jdbc:postgresql://<homelab-ip>:5432/app KEYCLOAK_ISSUER_URI=http://<homelab-ip>:8180/realms/zk-spring \
+env DB_URL=jdbc:postgresql://home-lab:5432/app KEYCLOAK_ISSUER_URI=http://home-lab:8180/realms/zk-spring \
     ./mvnw -pl backend/app spring-boot:run
 # terminal 2
-env KEYCLOAK_ISSUER_URI=http://<homelab-ip>:8180/realms/zk-spring ./mvnw -pl frontend/shell spring-boot:run
+env KEYCLOAK_ISSUER_URI=http://home-lab:8180/realms/zk-spring ./mvnw -pl frontend/shell spring-boot:run
 ```
 
 Expected: the backend log shows Flyway applying `20261028.1` and `20261028.2` to the home-lab database.
@@ -2900,7 +2941,7 @@ Expected: the backend log shows Flyway applying `20261028.1` and `20261028.2` to
 | 6 | As `editor`, in a second tab call `curl -i http://localhost:8080/api/tasks` | `401` with `WWW-Authenticate: Bearer` (no token) |
 | 7 | Stop the backend, reload the shell | Page renders with an "API error" notification, no stack trace; start the backend and reload, it works again |
 | 8 | Restart the shell with `env SERVER_SERVLET_SESSION_TIMEOUT=1m ...`, log in, wait 2 minutes, click a task's Edit | Page reloads through login (Keycloak may sign you straight back in); no raw HTML or error dialog |
-| 9 | In Keycloak admin (`http://<homelab-ip>:8180`, `admin`/`admin`) end the `editor` session, then let the access token expire (5 min) and click Save | Sent to `/logout`, then the login page |
+| 9 | In Keycloak admin (`http://home-lab:8180`, `admin`/`admin`) end the `editor` session, then let the access token expire (5 min) and click Save | Sent to `/logout`, then the login page |
 
 Fix anything that fails before committing.
 
@@ -3022,7 +3063,10 @@ In `## Gotchas`, append:
 - `infra/postgres/init/` only runs on an empty Postgres volume; create the `keycloak` database by hand otherwise.
 - View models must catch `RuntimeException` around API calls and pass it to `ApiErrors.show(...)`: a failed token
   refresh is an `OAuth2AuthorizationException`, not a `RestClientException`.
-- On this Mac Docker is the home-lab socket: run backend tests with `TESTCONTAINERS_HOST_OVERRIDE=<homelab-ip>`.
+- Docker may be remote (on the maintainer's Mac it is the home-lab's rootless Podman, reached through an SSH-forwarded
+  socket). So `compose.yaml` must not bind-mount repo files; copy them into an image under `infra/` instead. Backend
+  tests against a remote daemon need `TESTCONTAINERS_HOST_OVERRIDE=<daemon host>` and
+  `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=<socket path on that host>` (`/run/user/1000/podman/podman.sock`).
 ```
 
 In `## Testing`, append:
@@ -3060,9 +3104,15 @@ sub-bullets with:
   - ZK session timeout (`metainfo/zk/zk.xml` timeout URI) → `/`, which goes through login.
 ```
 
+In the same spec, section `### \`compose.yaml\``, replace "`infra/postgres/init/01-keycloak.sql` mounted into
+`/docker-entrypoint-initdb.d/` creates database `keycloak`" with "`infra/postgres/init/01-keycloak.sql`, copied into the
+`zk-spring-postgres` image built from `infra/postgres/Dockerfile`, creates database `keycloak`", and in
+`### \`infra/keycloak/zk-spring-realm.json\`` add the line "Copied into the `zk-spring-keycloak` image
+(`infra/keycloak/Dockerfile`) rather than bind-mounted, so compose works against a remote daemon."
+
 - [ ] **Step 5: Full verification**
 
-Run (fish): `set -x TESTCONTAINERS_HOST_OVERRIDE <homelab-ip>; ./mvnw verify`
+Run (fish, tunnel up and the two `TESTCONTAINERS_*` variables set as in Prerequisites): `./mvnw verify`
 Expected: BUILD SUCCESS for all modules; test counts: security 5, iam 9, task 7, app 3, frontend-common 13,
 shell 6.
 
