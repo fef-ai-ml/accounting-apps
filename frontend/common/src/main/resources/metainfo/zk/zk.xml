@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Merged into the configuration of every ZK app that has frontend-common on its classpath. -->
 <zk>
+	<!-- A zk.xml inside a jar is an add-on configuration; ZK requires it to name itself. -->
+	<config-name>zk-spring-common</config-name>
 	<!-- When the HTTP session has expired, reload the home page; that goes through Keycloak login again. -->
 	<session-config>
 		<device-type>ajax</device-type>
