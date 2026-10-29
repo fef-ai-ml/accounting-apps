@@ -21,7 +21,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -63,8 +65,10 @@ class TokenToPermissionsTests {
 
 		/** Replaces the issuer-based decoder: tokens are verified against the test key instead of Keycloak's JWKS. */
 		@Bean
-		JwtDecoder jwtDecoder() {
-			return NimbusJwtDecoder.withPublicKey((RSAPublicKey) keys.getPublic()).build();
+		JwtDecoder jwtDecoder(OAuth2TokenValidator<Jwt> keycloakAccessTokenValidator) {
+			NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey((RSAPublicKey) keys.getPublic()).build();
+			decoder.setJwtValidator(keycloakAccessTokenValidator);
+			return decoder;
 		}
 
 		@Bean
@@ -96,11 +100,16 @@ class TokenToPermissionsTests {
 
 	/** An access token shaped like Keycloak's: preferred_username, name and realm_access.roles. */
 	private String bearer(String username, String... roles) {
+		return tokenOfType("Bearer", username, roles);
+	}
+
+	private String tokenOfType(String type, String username, String... roles) {
 		Instant now = Instant.now();
 		JwtClaimsSet claims = JwtClaimsSet.builder()
 				.subject("sub-" + username)
 				.issuedAt(now)
 				.expiresAt(now.plusSeconds(300))
+				.claim("typ", type)
 				.claim("preferred_username", username)
 				.claim("name", username + " (test)")
 				.claim("realm_access", Map.of("roles", List.of(roles)))
@@ -139,6 +148,12 @@ class TokenToPermissionsTests {
 		mvc.perform(get("/api/tasks").header(HttpHeaders.AUTHORIZATION,
 						bearer("nobody", "default-roles-zk-spring", "offline_access", "uma_authorization")))
 				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void idTokenIsUnauthorized() throws Exception {
+		mvc.perform(get("/api/iam/me").header(HttpHeaders.AUTHORIZATION, tokenOfType("ID", "editor", "EDITOR")))
+				.andExpect(status().isUnauthorized());
 	}
 
 	@Test

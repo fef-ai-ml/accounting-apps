@@ -8,6 +8,9 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 
@@ -32,6 +35,12 @@ public class SecurityModule {
 			log.warn("No PermissionResolver bean: requests are authenticated but have no permissions");
 			return PermissionResolver.denyAll();
 		}));
+	}
+
+	/** Only Keycloak access tokens are accepted; ID and refresh tokens carry another "typ". */
+	@Bean
+	OAuth2TokenValidator<Jwt> keycloakAccessTokenValidator() {
+		return new JwtClaimValidator<String>("typ", "Bearer"::equals);
 	}
 
 	@Bean
