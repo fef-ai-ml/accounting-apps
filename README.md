@@ -11,10 +11,12 @@ One Maven module per bounded context on each side, assembled by a thin deployabl
 ```
 backend/
   common/   shared kernel: error handling only, no domain code
+  security/ shared resource-server wiring: JWT validation, PermissionResolver, method security
+  iam/      "iam" bounded context: role -> permission mappings (own schema), /api/iam/me
   task/     "task" bounded context: controller, service, entity, own Postgres schema + migrations
   app/      Spring Boot app (port 8080): imports the context modules it deploys
 frontend/
-  common/   ZK servlet wiring, UiModule contract, per-module REST client factory
+  common/   ZK servlet wiring, Keycloak login, UiModule contract, per-module REST client factory (bearer relay)
   task/     "task" UI module: ZUL pages, view models, client for the task API
   shell/    Spring Boot app (port 8081): layout + navigation, hosts the UI modules
 ```
@@ -31,12 +33,72 @@ Rules that keep the modules separable:
 ## Run
 
 ```
-docker compose up -d                                  # PostgreSQL on :5432
+docker compose up -d                                  # PostgreSQL :5432, Keycloak :8180 (realm zk-spring)
 ./mvnw -pl backend/app spring-boot:run                # API  http://localhost:8080  (Swagger UI: /swagger-ui.html)
-./mvnw -pl frontend/shell spring-boot:run             # UI   http://localhost:8081
+./mvnw -pl frontend/shell spring-boot:run             # UI   http://localhost:8081  (log in through Keycloak)
 ```
 
 (After the first `./mvnw install -DskipTests`, so the module jars are in your local repo.)
+
+Demo users (dev only, password = username): `admin` (everything), `editor` (read + write), `viewer` (read).
+Keycloak admin console: `http://localhost:8180`, `admin`/`admin`.
+
+Keycloak and the apps must agree on one URL for Keycloak, because tokens carry it as their issuer. The defaults
+everywhere are `http://localhost:8180`. When Keycloak runs on another host (e.g. a home-lab), keep those defaults and
+forward the port: `ssh -fN -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 8180:localhost:8180 <user>@<host>`
+(without the keep-alive options a dropped connection leaves the local port open but silent, and the login page hangs
+forever; kill the old `ssh` process and start the tunnel again). Pointing the apps at `http://<host>:8180` instead
+only works if Keycloak sees the browser as a private address or is served over HTTPS: the realm keeps Keycloak's
+default `sslRequired=external`. It also requires changing the `ports` binding of `keycloak` in `compose.yaml` to
+`"8180:8080"` (it is bound to `127.0.0.1` by default). Then set `KEYCLOAK_URL=http://<host>:8180` for compose and
+`KEYCLOAK_ISSUER_URI=http://<host>:8180/realms/zk-spring` for both apps.
+
+`infra/keycloak/zk-spring-realm.json` is for development only (demo users whose password is their username, a fixed
+client secret). Never import it into a production Keycloak.
+
+Postgres creates the `keycloak` database only on an empty volume (`infra/postgres/init/`). On an existing volume run
+once: `docker exec <postgres-container> psql -U app -d app -c 'CREATE DATABASE keycloak OWNER app;'`.
+
+## Login and permissions
+
+- Keycloak says who the user is and which realm roles they hold (`ADMIN`, `EDITOR`, `VIEWER`).
+- The `iam` module maps roles to permissions named `<module>:<action>` (tables `iam.permission`,
+  `iam.role_permission`). Endpoints check permissions only: `@PreAuthorize("hasAuthority('task:write')")`.
+- The ZK shell is the OAuth2 client; tokens stay in its HttpSession and every `ModuleRestClients` client sends the
+  user's access token. View models use `CurrentUser.can(...)` to hide what the user may not do; the backend enforces.
+- Change what a role may do with a migration in `backend/iam/src/main/resources/db/migration/iam/` (applied at the
+  next backend start). Rows edited directly in `iam.role_permission` reach running backends within 60 seconds; the UI
+  picks them up at the next login.
+
+### Manual end-to-end check
+
+Run this after changes to login, permissions or the ZK wiring; the automated tests cannot cover the browser, Keycloak
+and ZK's own servlets together. Start the apps only after `./mvnw install -DskipTests` has finished: a shell started
+while the install is still running resolves stale jars and comes up without Spring Security.
+
+```
+./mvnw -q install -DskipTests
+./mvnw -pl backend/app spring-boot:run       # add env DB_URL=... if Postgres is not on localhost
+./mvnw -pl frontend/shell spring-boot:run
+```
+
+Use a private browser window per user, at `http://localhost:8081`:
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | Open `http://localhost:8081` | Keycloak login page of realm `zk-spring` |
+| 2 | Log in as `viewer`/`viewer` | Header shows "Vera Viewer"; "Tasks" in the navigation; list visible; no form, no Edit/Delete, checkboxes disabled |
+| 3 | Click **Log out** | Back on the Keycloak login page (not signed in again automatically) |
+| 4 | Log in as `editor`/`editor` | Form and Edit visible, no Delete; creating and editing a task works |
+| 5 | Log in as `admin`/`admin` | Everything visible; deleting a task works |
+| 6 | `curl -i http://localhost:8080/api/tasks` | `401` with `WWW-Authenticate: Bearer` |
+| 7 | Stop the backend, reload the shell | Page renders with an "API error" notification, no stack trace; after restarting the backend and reloading, it works again |
+| 8 | Restart the shell with `env SERVER_SERVLET_SESSION_TIMEOUT=1m`, log in, wait 2 minutes, click Edit | Page reloads through login (Keycloak may sign you straight back in); no raw HTML or error dialog |
+| 9 | Leave a page idle for more than 5 minutes (access-token lifetime), then act | It still works (the shell refreshes the token silently) |
+| 10 | In the Keycloak admin console (`http://localhost:8180`, `admin`/`admin`) sign out the `editor` session, wait more than 5 minutes, click Save | Sent to `/logout`, then the Keycloak login page |
+
+If you are sent back to the login page after every login, the shell log shows `API call unauthorized` with the
+backend's `WWW-Authenticate` reason (usually an issuer mismatch, see above).
 
 Tests: `./mvnw verify` (backend tests start PostgreSQL through Testcontainers, so Docker must be usable).
 
@@ -44,6 +106,9 @@ Tests: `./mvnw verify` (backend tests start PostgreSQL through Testcontainers, s
 
 1. `backend/<name>`: copy `backend/task`, rename packages, schema, migration folder; import its `*Module` in `backend/app`.
 2. `frontend/<name>`: copy `frontend/task`, rename; define a `UiModule` bean; import its `*UiModule` in `frontend/shell`.
+3. Permissions: add `<name>:<action>` codes and their role mappings in a new migration under
+   `backend/iam/src/main/resources/db/migration/iam/`, protect endpoints with `@PreAuthorize`, and give the UI module
+   `.withPermission("<name>:read")`.
 
 ## Splitting a module out later
 
@@ -83,6 +148,11 @@ except the app that deploys it. (Today nothing does, so this is a no-op until yo
 `TaskModule` already brings its own entities, repositories, controller, error handling and Flyway location, so no module
 code changes. `backend/task`'s own tests (`TaskApiTests`) already boot the module on its own, which is the same shape as
 this service.
+
+`TaskModule` also brings `SecurityModule`, but the new service has no `iam`, so it starts with the fail-closed
+resolver (every call 403, with a startup warning). Before routing traffic to it, add the REST `PermissionResolver`
+described in follow-up 2 of `docs/superpowers/specs/2026-10-28-auth-keycloak-iam-design.md`, and give the service
+`KEYCLOAK_ISSUER_URI`.
 
 **2. Give it its own database.** Create the database and let Flyway build the schema from the module's migrations on first
 start. To carry existing data over from the shared database:

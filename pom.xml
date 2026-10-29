@@ -35,6 +35,16 @@
 			</dependency>
 			<dependency>
 				<groupId>com.example</groupId>
+				<artifactId>backend-security</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.example</groupId>
+				<artifactId>backend-iam</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.example</groupId>
 				<artifactId>backend-task</artifactId>
 				<version>${project.version}</version>
 			</dependency>

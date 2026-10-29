@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    build: infra/postgres
+    image: zk-spring-postgres:17
     environment:
       POSTGRES_DB: app
       POSTGRES_USER: app
@@ -14,6 +15,26 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  keycloak:
+    build: infra/keycloak
+    image: zk-spring-keycloak:26.8.1
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: app
+      KC_DB_PASSWORD: app
+      # Must be the URL both the browser and the backend use: tokens carry it as their issuer.
+      KC_HOSTNAME: ${KEYCLOAK_URL:-http://localhost:8180}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+    ports:
+      # Reached through an SSH tunnel (ssh -L 8180:localhost:8180); bind all interfaces only if you serve it over HTTPS.
+      - "127.0.0.1:8180:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pgdata:

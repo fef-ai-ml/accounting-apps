@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.flywaydb.core.api.Location;
 
 import com.example.common.CommonModule;
+import com.example.security.SecurityModule;
 
 /**
  * Entry point of the task bounded context. A deployable app includes the context with {@code @Import(TaskModule.class)}.
@@ -20,7 +21,7 @@ import com.example.common.CommonModule;
  * ({@code db/migration/task}); nothing outside the module touches them.
  */
 @Configuration(proxyBeanMethods = false)
-@Import(CommonModule.class)
+@Import({ CommonModule.class, SecurityModule.class })
 @ComponentScan(basePackageClasses = TaskModule.class)
 @EntityScan(basePackageClasses = TaskModule.class)
 @EnableJpaRepositories(basePackageClasses = TaskModule.class)

@@ -14,6 +14,8 @@
 
 	<modules>
 		<module>common</module>
+		<module>security</module>
+		<module>iam</module>
 		<module>task</module>
 		<module>app</module>
 	</modules>
