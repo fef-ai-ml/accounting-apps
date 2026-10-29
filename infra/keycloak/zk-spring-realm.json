@@ -37,7 +37,7 @@
       "firstName": "Ada",
       "lastName": "Admin",
       "credentials": [{ "type": "password", "value": "admin", "temporary": false }],
-      "realmRoles": ["ADMIN"]
+      "realmRoles": ["ADMIN", "default-roles-zk-spring"]
     },
     {
       "username": "editor",
@@ -47,7 +47,7 @@
       "firstName": "Eddie",
       "lastName": "Editor",
       "credentials": [{ "type": "password", "value": "editor", "temporary": false }],
-      "realmRoles": ["EDITOR"]
+      "realmRoles": ["EDITOR", "default-roles-zk-spring"]
     },
     {
       "username": "viewer",
@@ -57,7 +57,7 @@
       "firstName": "Vera",
       "lastName": "Viewer",
       "credentials": [{ "type": "password", "value": "viewer", "temporary": false }],
-      "realmRoles": ["VIEWER"]
+      "realmRoles": ["VIEWER", "default-roles-zk-spring"]
     }
   ]
 }
