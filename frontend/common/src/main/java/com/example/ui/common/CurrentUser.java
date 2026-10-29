@@ -39,4 +39,8 @@ public class CurrentUser {
 		return me().name();
 	}
 
+	public String getUsername() {
+		return me().username();
+	}
+
 }

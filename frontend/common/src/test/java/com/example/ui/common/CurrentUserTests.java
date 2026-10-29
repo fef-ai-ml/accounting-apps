@@ -29,6 +29,7 @@ class CurrentUserTests {
 		assertThat(currentUser.can("task:write")).isTrue();
 		assertThat(currentUser.can("task:delete")).isFalse();
 		assertThat(currentUser.getName()).isEqualTo("Eddie Editor");
+		assertThat(currentUser.getUsername()).isEqualTo("editor");
 	}
 
 	@Test
