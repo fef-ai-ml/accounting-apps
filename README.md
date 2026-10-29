@@ -45,7 +45,9 @@ Keycloak admin console: `http://localhost:8180`, `admin`/`admin`.
 
 Keycloak and the apps must agree on one URL for Keycloak, because tokens carry it as their issuer. The defaults
 everywhere are `http://localhost:8180`. When Keycloak runs on another host (e.g. a home-lab), keep those defaults and
-forward the port: `ssh -fN -L 8180:localhost:8180 <user>@<host>`. Pointing the apps at `http://<host>:8180` instead
+forward the port: `ssh -fN -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -L 8180:localhost:8180 <user>@<host>`
+(without the keep-alive options a dropped connection leaves the local port open but silent, and the login page hangs
+forever; kill the old `ssh` process and start the tunnel again). Pointing the apps at `http://<host>:8180` instead
 only works if Keycloak sees the browser as a private address or is served over HTTPS: the realm keeps Keycloak's
 default `sslRequired=external`. It also requires changing the `ports` binding of `keycloak` in `compose.yaml` to
 `"8180:8080"` (it is bound to `127.0.0.1` by default). Then set `KEYCLOAK_URL=http://<host>:8180` for compose and
