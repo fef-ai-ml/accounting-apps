@@ -20,7 +20,8 @@ import org.springframework.security.web.SecurityFilterChain;
  *
  * <p>Tokens are validated against {@code spring.security.oauth2.resourceserver.jwt.issuer-uri}. Permissions come from
  * the {@link PermissionResolver} bean of the deployment (the {@code iam} module in {@code backend/app}); without one,
- * every request is authenticated but has no permissions.
+ * every request is authenticated but has no permissions. The same holds for the {@link TenantDirectory}: without one,
+ * no request has a tenant.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableMethodSecurity
@@ -30,11 +31,17 @@ public class SecurityModule {
 	private static final Logger log = LoggerFactory.getLogger(SecurityModule.class);
 
 	@Bean
-	KeycloakJwtAuthenticationConverter keycloakJwtAuthenticationConverter(ObjectProvider<PermissionResolver> resolvers) {
-		return new KeycloakJwtAuthenticationConverter(resolvers.getIfAvailable(() -> {
+	KeycloakJwtAuthenticationConverter keycloakJwtAuthenticationConverter(ObjectProvider<PermissionResolver> resolvers,
+			ObjectProvider<TenantDirectory> directories) {
+		PermissionResolver resolver = resolvers.getIfAvailable(() -> {
 			log.warn("No PermissionResolver bean: requests are authenticated but have no permissions");
 			return PermissionResolver.denyAll();
-		}));
+		});
+		TenantDirectory directory = directories.getIfAvailable(() -> {
+			log.warn("No TenantDirectory bean: requests are authenticated but have no tenant");
+			return TenantDirectory.none();
+		});
+		return new KeycloakJwtAuthenticationConverter(resolver, directory);
 	}
 
 	/** Only Keycloak access tokens are accepted; ID and refresh tokens carry another "typ". */
