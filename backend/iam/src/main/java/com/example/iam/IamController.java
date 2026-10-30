@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.security.KeycloakRoles;
+import com.example.security.KeycloakTenant;
 
 @RestController
 @RequestMapping("/api/iam")
@@ -21,8 +22,11 @@ class IamController {
 
 	private final RolePermissionRepository repository;
 
-	IamController(RolePermissionRepository repository) {
+	private final DbTenantDirectory tenants;
+
+	IamController(RolePermissionRepository repository, DbTenantDirectory tenants) {
 		this.repository = repository;
+		this.tenants = tenants;
 	}
 
 	/** Who the caller is and what they may do; the UI uses it to show or hide actions. */
@@ -36,7 +40,8 @@ class IamController {
 				.map(GrantedAuthority::getAuthority)
 				.sorted()
 				.toList();
-		return new MeResponse(username, name, roles, permissions);
+		TenantResponse tenant = KeycloakTenant.alias(jwt).flatMap(tenants::find).map(TenantResponse::of).orElse(null);
+		return new MeResponse(username, name, roles, permissions, tenant);
 	}
 
 	@GetMapping("/roles")

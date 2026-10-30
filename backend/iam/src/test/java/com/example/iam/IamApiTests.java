@@ -3,6 +3,7 @@ package com.example.iam;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,6 +42,13 @@ class IamApiTests {
 
 	@Autowired
 	DbPermissionResolver resolver;
+
+	static final UUID DEMO = UUID.fromString("7f3a0c4e-1b2d-4e5f-8a9b-0c1d2e3f4a5b");
+
+	static final UUID ACME = UUID.fromString("b2c4e6a8-0d1f-4a3b-9c5d-7e8f9a0b1c2d");
+
+	@Autowired
+	DbTenantDirectory tenants;
 
 	private static Jwt token(Map<String, Object> claims) {
 		return Jwt.withTokenValue("t").header("alg", "none").subject("sub-1").claims(c -> c.putAll(claims)).build();
@@ -74,9 +83,56 @@ class IamApiTests {
 
 	@Test
 	void resolverReadsRolesFromTheToken() {
-		Jwt editor = token(Map.of("realm_access", Map.of("roles", List.of("EDITOR", "offline_access"))));
+		Jwt editor = token(Map.of("realm_access", Map.of("roles", List.of("EDITOR", "offline_access")),
+				"organization", List.of("demo")));
 
 		assertThat(resolver.permissionsFor(editor)).containsExactlyInAnyOrder("task:read", "task:write");
+	}
+
+	@Test
+	void directoryResolvesOnlyActiveTenants() {
+		assertThat(tenants.tenantIdOf("demo")).contains(DEMO);
+		assertThat(tenants.tenantIdOf("acme")).contains(ACME);
+		assertThat(tenants.tenantIdOf("closed")).isEmpty();
+		assertThat(tenants.tenantIdOf("nobody")).isEmpty();
+	}
+
+	@Test
+	void tokenWithoutActiveTenantHasNoPermissions() {
+		Map<String, Object> editorRoles = Map.of("roles", List.of("EDITOR"));
+
+		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles)))).isEmpty();
+		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles,
+				"organization", List.of("closed"))))).isEmpty();
+		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles,
+				"organization", List.of("nobody"))))).isEmpty();
+		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles,
+				"organization", List.of("demo", "acme"))))).isEmpty();
+	}
+
+	@Test
+	void meShowsTheTenant() throws Exception {
+		mvc.perform(get("/api/iam/me").with(jwt().jwt(j -> j.claim("preferred_username", "editor")
+						.claim("organization", List.of("demo")))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.tenant.id").value(DEMO.toString()))
+				.andExpect(jsonPath("$.tenant.alias").value("demo"))
+				.andExpect(jsonPath("$.tenant.name").value("Demo Company"))
+				.andExpect(jsonPath("$.tenant.status").value("ACTIVE"));
+	}
+
+	@Test
+	void meShowsASuspendedTenantSoTheUiCanExplain() throws Exception {
+		mvc.perform(get("/api/iam/me").with(jwt().jwt(j -> j.claim("organization", List.of("closed")))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.tenant.status").value("SUSPENDED"));
+	}
+
+	@Test
+	void meWithoutOrganizationHasNoTenant() throws Exception {
+		mvc.perform(get("/api/iam/me").with(jwt().jwt(j -> j.claim("preferred_username", "viewer"))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.tenant").value(nullValue()));
 	}
 
 	@Test
