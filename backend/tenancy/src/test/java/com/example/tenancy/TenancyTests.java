@@ -18,6 +18,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.example.security.KeycloakAuthentication;
@@ -29,6 +30,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest(classes = TenancyTests.TestApp.class,
 		properties = { "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9/realms/test",
 				"spring.datasource.hikari.maximum-pool-size=1", "spring.jpa.hibernate.ddl-auto=validate" })
+// Subclasses change properties and so start their own container; stop each before the next starts.
+@DirtiesContext
 class TenancyTests {
 
 	@SpringBootConfiguration

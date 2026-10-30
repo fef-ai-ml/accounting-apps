@@ -36,14 +36,14 @@ final class RlsConnectionProvider implements MultiTenantConnectionProvider<UUID>
 	@Override
 	public Connection getConnection(UUID tenantId) throws SQLException {
 		Connection connection = getAnyConnection();
-		if (!JwtTenantIdentifierResolver.ROOT.equals(tenantId)) {
-			try {
-				setTenant(connection, tenantId.toString());
-			}
-			catch (SQLException ex) {
-				discard(connection);
-				throw ex;
-			}
+		// Root is set too ('' = no tenant), so a value left on the connection by anyone else is overwritten.
+		String value = JwtTenantIdentifierResolver.ROOT.equals(tenantId) ? "" : tenantId.toString();
+		try {
+			setTenant(connection, value);
+		}
+		catch (SQLException ex) {
+			discard(connection);
+			throw ex;
 		}
 		return connection;
 	}
@@ -76,10 +76,18 @@ final class RlsConnectionProvider implements MultiTenantConnectionProvider<UUID>
 	}
 
 	private static void setTenant(Connection connection, String tenantId) throws SQLException {
-		// Session-level (false): Hibernate may borrow the connection before the transaction begins.
+		// Session-level (false): Hibernate may borrow the connection before the transaction begins. Outside
+		// autocommit it is committed on its own, or the pool's rollback on close would undo the reset.
+		boolean autoCommit = connection.getAutoCommit();
+		if (!autoCommit) {
+			connection.rollback();
+		}
 		try (PreparedStatement statement = connection.prepareStatement("select set_config('app.tenant_id', ?, false)")) {
 			statement.setString(1, tenantId);
 			statement.execute();
+		}
+		if (!autoCommit) {
+			connection.commit();
 		}
 	}
 
