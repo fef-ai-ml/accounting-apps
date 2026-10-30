@@ -15,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -31,11 +30,13 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -49,19 +50,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(TokenToPermissionsTests.Config.class)
+@Import({ TokenToPermissionsTests.Config.class, TestcontainersConfiguration.class })
+// Test classes here use different contexts and so start their own container; stop each before the next starts.
+@DirtiesContext
 class TokenToPermissionsTests {
 
 	@TestConfiguration(proxyBeanMethods = false)
 	static class Config {
 
 		private final KeyPair keys = generateRsaKeyPair();
-
-		@Bean
-		@ServiceConnection
-		PostgreSQLContainer postgres() {
-			return new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"));
-		}
 
 		/** Replaces the issuer-based decoder: tokens are verified against the test key instead of Keycloak's JWKS. */
 		@Bean
@@ -98,24 +95,66 @@ class TokenToPermissionsTests {
 	@Autowired
 	JwtEncoder encoder;
 
-	/** An access token shaped like Keycloak's: preferred_username, name and realm_access.roles. */
+	/** An access token shaped like Keycloak's: preferred_username, name, realm_access.roles, organization. */
 	private String bearer(String username, String... roles) {
-		return tokenOfType("Bearer", username, roles);
+		return tokenOfType("Bearer", List.of("demo"), username, roles);
 	}
 
-	private String tokenOfType(String type, String username, String... roles) {
+	private String bearerIn(List<String> organizations, String username, String... roles) {
+		return tokenOfType("Bearer", organizations, username, roles);
+	}
+
+	private String tokenOfType(String type, List<String> organizations, String username, String... roles) {
 		Instant now = Instant.now();
-		JwtClaimsSet claims = JwtClaimsSet.builder()
+		JwtClaimsSet.Builder claims = JwtClaimsSet.builder()
 				.subject("sub-" + username)
 				.issuedAt(now)
 				.expiresAt(now.plusSeconds(300))
 				.claim("typ", type)
 				.claim("preferred_username", username)
 				.claim("name", username + " (test)")
-				.claim("realm_access", Map.of("roles", List.of(roles)))
-				.build();
+				.claim("realm_access", Map.of("roles", List.of(roles)));
+		if (!organizations.isEmpty()) {
+			claims.claim("organization", organizations);
+		}
 		JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).build();
-		return "Bearer " + encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
+		return "Bearer " + encoder.encode(JwtEncoderParameters.from(header, claims.build())).getTokenValue();
+	}
+
+	@Test
+	void meNamesTheTenant() throws Exception {
+		mvc.perform(get("/api/iam/me").header(HttpHeaders.AUTHORIZATION, bearer("editor", "EDITOR")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.tenant.alias").value("demo"))
+				.andExpect(jsonPath("$.tenant.status").value("ACTIVE"));
+	}
+
+	@Test
+	void tokenWithoutOrganizationHasNoPermissions() throws Exception {
+		String noTenant = bearerIn(List.of(), "loner", "ADMIN");
+
+		mvc.perform(get("/api/tasks").header(HttpHeaders.AUTHORIZATION, noTenant)).andExpect(status().isForbidden());
+		mvc.perform(get("/api/iam/me").header(HttpHeaders.AUTHORIZATION, noTenant))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.tenant").value(nullValue()))
+				.andExpect(jsonPath("$.permissions").isEmpty());
+	}
+
+	@Test
+	void tenantsAreIsolatedEndToEnd() throws Exception {
+		String demoEditor = bearer("editor", "EDITOR");
+		String acmeAdmin = bearerIn(List.of("acme"), "acme-admin", "ADMIN");
+
+		String location = mvc.perform(post("/api/tasks").header(HttpHeaders.AUTHORIZATION, demoEditor)
+						.contentType(MediaType.APPLICATION_JSON).content("{\"title\": \"demo only\", \"done\": false}"))
+				.andExpect(status().isCreated())
+				.andReturn().getResponse().getHeader("Location");
+
+		mvc.perform(get(location).header(HttpHeaders.AUTHORIZATION, acmeAdmin)).andExpect(status().isNotFound());
+		mvc.perform(get("/api/tasks").header(HttpHeaders.AUTHORIZATION, acmeAdmin))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[*].title", not(hasItem("demo only"))));
+		mvc.perform(get(location).header(HttpHeaders.AUTHORIZATION, demoEditor)).andExpect(status().isOk());
 	}
 
 	@Test
@@ -152,7 +191,7 @@ class TokenToPermissionsTests {
 
 	@Test
 	void idTokenIsUnauthorized() throws Exception {
-		mvc.perform(get("/api/iam/me").header(HttpHeaders.AUTHORIZATION, tokenOfType("ID", "editor", "EDITOR")))
+		mvc.perform(get("/api/iam/me").header(HttpHeaders.AUTHORIZATION, tokenOfType("ID", List.of("demo"), "editor", "EDITOR")))
 				.andExpect(status().isUnauthorized());
 	}
 

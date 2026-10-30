@@ -3,14 +3,10 @@ package com.example.app;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 import com.example.iam.DbPermissionResolver;
 import com.example.security.PermissionResolver;
@@ -21,19 +17,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(ApiApplicationTests.Postgres.class)
+@Import(TestcontainersConfiguration.class)
+// Test classes here use different contexts and so start their own container; stop each before the next starts.
+@DirtiesContext
 class ApiApplicationTests {
-
-	@TestConfiguration(proxyBeanMethods = false)
-	static class Postgres {
-
-		@Bean
-		@ServiceConnection
-		PostgreSQLContainer postgres() {
-			return new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"));
-		}
-
-	}
 
 	@Autowired
 	MockMvc mvc;
