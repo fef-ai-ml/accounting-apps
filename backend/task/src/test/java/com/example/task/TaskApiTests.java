@@ -18,13 +18,13 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,7 +41,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// The issuer is never contacted: the authentication post-processors below supply the authentication, and Boot resolves the issuer lazily.
+// The issuer is never contacted: the authentication post-processors below supply the authentication, and Boot
+// resolves the issuer lazily.
 @SpringBootTest(classes = TaskApiTests.TestApp.class,
 		properties = "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9/realms/test")
 @AutoConfigureMockMvc
@@ -132,7 +133,8 @@ class TaskApiTests {
 
 	@Test
 	void writingATaskIntoAnotherTenantIsRejected() {
-		// Without WITH CHECK the insert would succeed (app_runtime is granted INSERT).
+		// Without the policy's check (WITH CHECK, or USING standing in for it) the insert would succeed:
+		// app_runtime has INSERT.
 		assertThatThrownBy(() -> inTenantTransaction(TENANT_A, () -> entityManager.createNativeQuery(
 						"insert into task.task (tenant_id, title) values (cast(:tenant as uuid), 'x')")
 				.setParameter("tenant", TENANT_B.toString())
