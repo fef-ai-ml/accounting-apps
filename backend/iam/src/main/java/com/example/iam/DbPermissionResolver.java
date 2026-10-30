@@ -14,8 +14,8 @@ import com.example.security.PermissionResolver;
 import com.example.security.TenantDirectory;
 
 /**
- * Resolves permissions from the {@code iam} tables for users of an active tenant. Results are cached per role set for 60 seconds, so a changed
- * mapping reaches running instances within a minute without a restart.
+ * Resolves permissions from the {@code iam} tables for users of an active tenant. Results are cached per role set
+ * for 60 seconds, so a changed mapping reaches running instances within a minute without a restart.
  */
 @Component
 public class DbPermissionResolver implements PermissionResolver {

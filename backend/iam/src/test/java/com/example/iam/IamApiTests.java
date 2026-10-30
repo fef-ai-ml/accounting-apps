@@ -78,7 +78,8 @@ class IamApiTests {
 
 	@Test
 	void tokenWithoutRolesHasNoPermissions() {
-		assertThat(resolver.permissionsFor(token(Map.of("scope", "openid")))).isEmpty();
+		// Active tenant, so only the missing roles can explain the empty result.
+		assertThat(resolver.permissionsFor(token(Map.of("scope", "openid", "organization", List.of("demo"))))).isEmpty();
 	}
 
 	@Test
