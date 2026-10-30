@@ -13,15 +13,17 @@ import org.flywaydb.core.api.Location;
 
 import com.example.common.CommonModule;
 import com.example.security.SecurityModule;
+import com.example.tenancy.TenancyModule;
 
 /**
  * Entry point of the task bounded context. A deployable app includes the context with {@code @Import(TaskModule.class)}.
  *
  * <p>The module owns its code, its tables (Postgres schema {@code task}) and its migrations
- * ({@code db/migration/task}); nothing outside the module touches them.
+ * ({@code db/migration/task}); nothing outside the module touches them. Tasks belong to a tenant (see
+ * {@code TenancyModule}).
  */
 @Configuration(proxyBeanMethods = false)
-@Import({ CommonModule.class, SecurityModule.class })
+@Import({ CommonModule.class, SecurityModule.class, TenancyModule.class })
 @ComponentScan(basePackageClasses = TaskModule.class)
 @EntityScan(basePackageClasses = TaskModule.class)
 @EnableJpaRepositories(basePackageClasses = TaskModule.class)

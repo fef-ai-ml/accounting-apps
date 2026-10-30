@@ -1,7 +1,10 @@
 package com.example.task;
 
 import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
 
+import com.example.security.KeycloakAuthentication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
@@ -12,12 +15,14 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -51,10 +56,47 @@ class TaskApiTests {
 	@Autowired
 	MockMvc mvc;
 
-	/** A request carrying a valid token whose holder has exactly these permissions. */
+	static final UUID TENANT_A = UUID.fromString("aaaaaaaa-0000-4000-8000-000000000001");
+
+	static final UUID TENANT_B = UUID.fromString("bbbbbbbb-0000-4000-8000-000000000002");
+
+	/** A request of tenant A whose holder has exactly these permissions. */
 	private static RequestPostProcessor as(String... permissions) {
-		return jwt().authorities(Arrays.stream(permissions).map(SimpleGrantedAuthority::new)
-				.toArray(GrantedAuthority[]::new));
+		return asTenant(TENANT_A, permissions);
+	}
+
+	/** A request whose authentication resolved to this tenant (null = no tenant), as the converter would build it. */
+	private static RequestPostProcessor asTenant(UUID tenant, String... permissions) {
+		Jwt jwt = Jwt.withTokenValue("t").header("alg", "none").subject("user").build();
+		List<GrantedAuthority> authorities = Arrays.stream(permissions)
+				.<GrantedAuthority>map(SimpleGrantedAuthority::new)
+				.toList();
+		return authentication(new KeycloakAuthentication(jwt, authorities, "user", tenant));
+	}
+
+	@Test
+	void tenantsDoNotSeeEachOthersTasks() throws Exception {
+		String location = createTask();
+
+		mvc.perform(get("/api/tasks").with(asTenant(TENANT_B, READ)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(0)));
+		// Another tenant's id looks exactly like a missing one.
+		mvc.perform(get(location).with(asTenant(TENANT_B, READ))).andExpect(status().isNotFound());
+		mvc.perform(put(location).with(asTenant(TENANT_B, WRITE)).contentType(MediaType.APPLICATION_JSON)
+						.content(NEW_TASK))
+				.andExpect(status().isNotFound());
+		mvc.perform(delete(location).with(asTenant(TENANT_B, DELETE))).andExpect(status().isNotFound());
+		mvc.perform(get(location).with(as(READ))).andExpect(status().isOk());
+	}
+
+	@Test
+	void requestWithoutTenantSeesNoTasks() throws Exception {
+		createTask();
+
+		mvc.perform(get("/api/tasks").with(asTenant(null, READ)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$", hasSize(0)));
 	}
 
 	private String createTask() throws Exception {

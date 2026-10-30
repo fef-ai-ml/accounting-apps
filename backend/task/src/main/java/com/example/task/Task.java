@@ -1,6 +1,7 @@
 package com.example.task;
 
 import java.time.Instant;
+import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import org.hibernate.annotations.Generated;
+import org.hibernate.annotations.TenantId;
 import org.hibernate.generator.EventType;
 
 @Entity
@@ -19,6 +21,10 @@ public class Task {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
+
+	@TenantId
+	@Column(name = "tenant_id", nullable = false, updatable = false)
+	private UUID tenantId;
 
 	@Column(nullable = false, length = 200)
 	private String title;
