@@ -71,7 +71,10 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
 - Never declare `clientScopes` in the realm file: Keycloak then skips its built-in scopes and tokens lose `sub` and
   `preferred_username`. The `zk-shell` client needs the `organization` scope, or every user has no tenant.
 - Code running outside a request (future scheduled jobs, `@Async`) has no `KeycloakAuthentication` and therefore sees
-  no tenant data; it must set an authentication for the tenant it works for.
+  no tenant data; it must set an authentication for the tenant it works for. Set it before the transaction starts,
+  use one transaction per tenant, and never switch tenants inside one (Hibernate fixes the tenant when the session
+  opens and the connection keeps `app.tenant_id` until release, so both barriers would see the first tenant).
+  `JdbcTemplate` or a raw `DataSource` outside a JPA transaction sees no tenant rows.
 - Backend tests run the application as `app_runtime` (`app-runtime-role.sql` + `TestcontainersConfiguration` with a
   `DynamicPropertyRegistrar`); never use `@ServiceConnection` there, it would connect as the superuser and every RLS
   test would pass for the wrong reason.

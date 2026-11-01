@@ -126,15 +126,28 @@ Environment variables: `DB_RUNTIME_USER` / `DB_RUNTIME_PASSWORD` (the API; defau
 
 ### Onboard a customer
 
-1. Keycloak admin console, realm `zk-spring` -> Organizations -> Create (alias, name, domain), add members, give them
-   realm roles; copy the organization id.
+1. Check the alias is unused: `select * from iam.tenant where alias = '<alias>';` (must return no row). Then Keycloak
+   admin console, realm `zk-spring` -> Organizations -> Create (alias, name, domain), add members, give them realm
+   roles; copy the organization id.
 2. As `app`: `INSERT INTO iam.tenant (id, alias, name, status) VALUES ('<organization id>', '<alias>', '<name>', 'ACTIVE');`
 
 Until step 2, the organization's users log in but get no permissions. Changes reach the API within 60 seconds.
 
+### Production: the demo tenants
+
+The migrations seed the demo tenants `demo` and `acme` as ACTIVE, and their ids are public in this repo. In
+production suspend them before onboarding customers, and never create Keycloak organizations with those aliases:
+
+`UPDATE iam.tenant SET status = 'SUSPENDED' WHERE alias IN ('demo', 'acme');`
+
 ### Suspend a customer
 
 `UPDATE iam.tenant SET status = 'SUSPENDED' WHERE alias = '<alias>';` (effective within 60 seconds).
+
+### Offboard a customer
+
+Set the tenant SUSPENDED as above. Never delete the `iam.tenant` row and never reuse an alias for another company: the
+token carries only the alias, so a new organization with an old alias inherits that tenant's data.
 
 ### Upgrading an existing setup
 
@@ -158,6 +171,8 @@ Until step 2, the organization's users log in but get no permissions. Changes re
 3. Permissions: add `<name>:<action>` codes and their role mappings in a new migration under
    `backend/iam/src/main/resources/db/migration/iam/`, protect endpoints with `@PreAuthorize`, and give the UI module
    `.withPermission("<name>:read")`.
+4. Tenant tables: follow the tenant-table checklist in `CLAUDE.md` (`tenant_id`, `@TenantId`, RLS policy, grants,
+   native-SQL RLS test). The boundary test in `ApiApplicationTests` fails the build for a table without RLS.
 
 ## Splitting a module out later
 
@@ -201,7 +216,8 @@ this service.
 `TaskModule` also brings `SecurityModule`, but the new service has no `iam`, so it starts with the fail-closed
 resolver (every call 403, with a startup warning). Before routing traffic to it, add the REST `PermissionResolver`
 described in follow-up 2 of `docs/superpowers/specs/2026-10-28-auth-keycloak-iam-design.md`, and give the service
-`KEYCLOAK_ISSUER_URI`.
+`KEYCLOAK_ISSUER_URI`. It also needs a `TenantDirectory` (without one every request has no tenant), and its
+Postgres needs the `app_runtime` role.
 
 **2. Give it its own database.** Create the database and let Flyway build the schema from the module's migrations on first
 start. To carry existing data over from the shared database:
