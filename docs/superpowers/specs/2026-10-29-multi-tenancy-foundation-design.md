@@ -113,8 +113,9 @@ data. This rule goes into CLAUDE.md.
 - Migration `V20261030_1__create_tenant_table.sql`:
   `iam.tenant(id UUID PRIMARY KEY, alias VARCHAR(100) NOT NULL UNIQUE, name VARCHAR(200) NOT NULL,
   status VARCHAR(20) NOT NULL CHECK (status IN ('ACTIVE','SUSPENDED')), created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
-  seeded with `demo` (`7f3a0c4e-1b2d-4e5f-8a9b-0c1d2e3f4a5b`, `ACTIVE`) and `acme`
-  (`b2c4e6a8-0d1f-4a3b-9c5d-7e8f9a0b1c2d`, `ACTIVE`), the same ids as in the realm file. Grants `SELECT` on all `iam` tables to `app_runtime`.
+  The demo tenants `demo` (`7f3a0c4e-1b2d-4e5f-8a9b-0c1d2e3f4a5b`) and `acme`
+  (`b2c4e6a8-0d1f-4a3b-9c5d-7e8f9a0b1c2d`), the same ids as in the realm file, are seeded ACTIVE only in dev by
+  `db/demo/iam/R__demo_tenants.sql` behind `iam.demo-tenants`. Grants `SELECT` on all `iam` tables to `app_runtime`.
 - `Tenant` entity + `TenantRepository` (Spring Data JPA, no `@TenantId`: the table is global).
 - `DbTenantDirectory implements TenantDirectory`: Caffeine cache, 60 s, organization id → `(id, alias, status)`. Only
   `ACTIVE` tenants are confirmed; a suspended or unknown id is not, so a suspended tenant also has no Hibernate tenant

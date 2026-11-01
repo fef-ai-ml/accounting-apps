@@ -137,7 +137,7 @@ Until step 2, the organization's users log in but get no permissions. Changes re
 ### Production: the demo tenants
 
 The demo tenants `demo` and `acme` (public ids) are seeded only by the dev profile (`iam.demo-tenants=true`); production
-never enables it. Never create Keycloak organizations with those aliases.
+never enables it. Never import the dev realm file into production: its organization ids are public.
 
 ### Suspend a customer
 
@@ -163,7 +163,10 @@ until it is onboarded as a new tenant under an unused alias (onboarding step 1).
    Action -> Delete; then `docker compose build keycloak; docker compose up -d keycloak`. The dev realm holds only demo
    data; manual changes to it are lost. Tokens issued before the re-import have no `tenant` claim and so no tenant:
    users must log in again.
-3. `./mvnw install -DskipTests`, then start the backend with the dev profile so `demo`/`acme` exist (Flyway adds `iam.tenant` and moves existing tasks to `demo`).
+3. `./mvnw install -DskipTests`, then start the backend with the dev profile so `demo`/`acme` exist (Flyway adds
+   `iam.tenant` and moves existing tasks to `demo`). If a build of this branch from before 2026-11-01 already migrated
+   the database, Flyway reports a checksum mismatch for `V20261030_1`; the dev database holds only demo data, so reset
+   it (`docker compose down -v; docker compose up -d` wipes Postgres and re-imports the realm) and start again.
 
 ## Add a feature module
 

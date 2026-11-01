@@ -55,7 +55,8 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   `isDone()`); see `TaskDto` and `UiModule`.
 - Jar names follow the artifactId: `backend-app-*.jar`, `frontend-shell-*.jar`.
 - Run apps with `./mvnw install -DskipTests` first so module jars exist in the local repo, then
-  `./mvnw -pl backend/app spring-boot:run` and `./mvnw -pl frontend/shell spring-boot:run`.
+  `./mvnw -pl backend/app spring-boot:run -Dspring-boot.run.profiles=dev` (demo tenants) and
+  `./mvnw -pl frontend/shell spring-boot:run`.
 - Token issuer must match exactly: `KC_HOSTNAME` (compose `KEYCLOAK_URL`) and the apps' `KEYCLOAK_ISSUER_URI` must use
   the same scheme, host and port, or every API call is 401 and the shell sends you back to the login page after every
   login (the shell logs `API call unauthorized` with the backend's `WWW-Authenticate` reason). For a Keycloak on
@@ -94,7 +95,7 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   `@DirtiesContext` so each container stops before the next starts.
 - Dev-only data lives in `db/demo/<module>` as repeatable migrations behind a property (`iam.demo-tenants`, set by the
   backend's `dev` profile); test-only migrations live in `db/test/<module>`, added with `spring.flyway.locations` in
-  the test.
+  the test (a module without a customizer, like `tenancy`, keeps Boot's default for its test migration).
 
 ## Testing
 
