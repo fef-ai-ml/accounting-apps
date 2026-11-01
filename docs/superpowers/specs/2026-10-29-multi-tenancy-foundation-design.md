@@ -168,7 +168,8 @@ schema, keeping the module-owns-its-schema rule.
 - Organizations `demo` (id `7f3a0c4e-1b2d-4e5f-8a9b-0c1d2e3f4a5b`, domain `demo.example`, members admin, editor,
   viewer) and `acme` (id `b2c4e6a8-0d1f-4a3b-9c5d-7e8f9a0b1c2d`, domain `acme.example`, member `acme-admin` with
   realm roles `ADMIN` and `default-roles-zk-spring`, password `acme-admin`).
-- Client `zk-shell`: `organization` added to `defaultClientScopes`. No `clientScopes` array is declared (see verified
+- Client `zk-shell`: a `tenant` protocol mapper (`oidc-organization-membership-mapper`, `addOrganizationId=true`,
+  claim `tenant`); `organization` added to `defaultClientScopes`. No `clientScopes` array is declared (see verified
   facts).
 - Keycloak skips importing a realm that already exists, and organizations created in the console get random ids that
   would not match the migration's seed. The README upgrade step for an existing setup is therefore: delete the
@@ -187,6 +188,7 @@ schema, keeping the module-owns-its-schema rule.
 | Tenant `SUSPENDED` or not in `iam.tenant` | Same; `me` shows the status when the id is known |
 | Tenant A requests tenant B's row id | 404, as if it did not exist |
 | Reset of `app.tenant_id` fails on release | Connection aborted, never reused |
+| Token without the `tenant` claim (issued before the realm re-import, or mapper missing) | Same as no organization; log in again after the re-import |
 | `organization` scope missing on the client | Every user has no tenant; visible in `me` (CLAUDE.md gotcha) |
 
 ## Testing

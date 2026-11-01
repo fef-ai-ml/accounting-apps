@@ -41,8 +41,8 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   is the organization **id** from the token's `tenant` claim (a membership mapper with "add organization id" on the
   `zk-shell` client), never the alias (a deleted alias can be re-created for another company). It is resolved once by
   `KeycloakJwtAuthenticationConverter`, confirmed ACTIVE through `TenantDirectory` (implemented by `iam`) and carried
-  on `KeycloakAuthentication`. `backend/tenancy` sets it
-  on Hibernate and on each pooled connection (`app.tenant_id`). One user = one tenant.
+  on `KeycloakAuthentication`. `backend/tenancy` sets it on Hibernate and on each pooled connection
+  (`app.tenant_id`). One user = one tenant.
 - **The API connects as `app_runtime`** (no superuser, owns nothing), Flyway as `app`; RLS does not apply to owners
   and superusers.
 
@@ -93,7 +93,8 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   fails (`localhost:2375 failed to respond`); test classes with different Spring contexts in one module carry
   `@DirtiesContext` so each container stops before the next starts.
 - Dev-only data lives in `db/demo/<module>` as repeatable migrations behind a property (`iam.demo-tenants`, set by the
-  backend's `dev` profile); test-only migrations live in `db/test/<module>`, added with `spring.flyway.locations` in the test.
+  backend's `dev` profile); test-only migrations live in `db/test/<module>`, added with `spring.flyway.locations` in
+  the test.
 
 ## Testing
 

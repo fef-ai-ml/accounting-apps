@@ -127,8 +127,8 @@ Environment variables: `DB_RUNTIME_USER` / `DB_RUNTIME_PASSWORD` (the API; defau
 
 ### Onboard a customer
 
-1. Check the alias is unused: `select * from iam.tenant where alias = '<alias>';` (must return no row). Then Keycloak
-   admin console, realm `zk-spring` -> Organizations -> Create (alias, name, domain), add members, give them realm
+1. Pick an alias unused in `iam.tenant`: `select * from iam.tenant where alias = '<alias>';` must return no row (an
+   offboarded tenant keeps its alias, so a re-created organization needs a new one). Then Keycloak admin console, realm `zk-spring` -> Organizations -> Create (alias, name, domain), add members, give them realm
    roles; copy the organization **id** (shown on the organization's page; the tenant is this id, not the alias).
 2. As `app`, insert that id: `INSERT INTO iam.tenant (id, alias, name, status) VALUES ('<organization id>', '<alias>', '<name>', 'ACTIVE');`
 
@@ -147,7 +147,7 @@ never enables it. Never create Keycloak organizations with those aliases.
 
 Set the tenant SUSPENDED as above. Never delete the `iam.tenant` row: its `alias` column is UNIQUE, so the old row keeps
 the alias. A Keycloak organization deleted and re-created under the same alias gets a new id and therefore no access
-until it is onboarded as a new tenant (with a new alias in `iam.tenant`).
+until it is onboarded as a new tenant under an unused alias (onboarding step 1).
 
 ### Upgrading an existing setup
 
