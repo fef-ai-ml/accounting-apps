@@ -15,12 +15,38 @@ import static org.mockito.Mockito.when;
 
 class CurrentUserTests {
 
+	private static final TenantDto DEMO = new TenantDto("7f3a0c4e-1b2d-4e5f-8a9b-0c1d2e3f4a5b", "demo", "Demo Company",
+			"ACTIVE");
+
 	private static final MeDto EDITOR =
-			new MeDto("editor", "Eddie Editor", List.of("EDITOR"), List.of("task:read", "task:write"));
+			new MeDto("editor", "Eddie Editor", List.of("EDITOR"), List.of("task:read", "task:write"), DEMO);
 
 	private final IamApiClient iamApiClient = mock(IamApiClient.class);
 
 	private final CurrentUser currentUser = new CurrentUser(iamApiClient);
+
+	@Test
+	void knowsTheTenant() {
+		when(iamApiClient.me()).thenReturn(EDITOR);
+
+		assertThat(currentUser.hasActiveTenant()).isTrue();
+		assertThat(currentUser.getTenantName()).isEqualTo("Demo Company");
+	}
+
+	@Test
+	void noOrSuspendedTenantIsNotActive() {
+		when(iamApiClient.me())
+				.thenReturn(new MeDto("loner", "Loner", List.of(), List.of(), null))
+				.thenReturn(new MeDto("x", "X", List.of(), List.of(),
+						new TenantDto("c0c0", "closed", "Closed Ltd", "SUSPENDED")));
+
+		assertThat(currentUser.hasActiveTenant()).isFalse();
+		assertThat(currentUser.getTenantName()).isEmpty();
+
+		CurrentUser other = new CurrentUser(iamApiClient);
+		assertThat(other.hasActiveTenant()).isFalse();
+		assertThat(other.getTenantName()).isEqualTo("Closed Ltd");
+	}
 
 	@Test
 	void checksPermissions() {

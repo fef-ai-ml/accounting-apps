@@ -1,6 +1,7 @@
 {
   "realm": "zk-spring",
   "enabled": true,
+  "organizationsEnabled": true,
   "roles": {
     "realm": [
       { "name": "ADMIN", "description": "Everything, including viewing role mappings" },
@@ -21,6 +22,7 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
+      "defaultClientScopes": ["web-origins", "acr", "profile", "roles", "basic", "email", "organization"],
       "redirectUris": ["http://localhost:8081/*"],
       "webOrigins": ["http://localhost:8081"],
       "attributes": {
@@ -58,6 +60,34 @@
       "lastName": "Viewer",
       "credentials": [{ "type": "password", "value": "viewer", "temporary": false }],
       "realmRoles": ["VIEWER", "default-roles-zk-spring"]
+    },
+    {
+      "username": "acme-admin",
+      "enabled": true,
+      "email": "admin@acme.example",
+      "emailVerified": true,
+      "firstName": "Adi",
+      "lastName": "Acme",
+      "credentials": [{ "type": "password", "value": "acme-admin", "temporary": false }],
+      "realmRoles": ["ADMIN", "default-roles-zk-spring"]
+    }
+  ],
+  "organizations": [
+    {
+      "id": "7f3a0c4e-1b2d-4e5f-8a9b-0c1d2e3f4a5b",
+      "name": "Demo Company",
+      "alias": "demo",
+      "enabled": true,
+      "domains": [{ "name": "example.com" }],
+      "members": [{ "username": "admin" }, { "username": "editor" }, { "username": "viewer" }]
+    },
+    {
+      "id": "b2c4e6a8-0d1f-4a3b-9c5d-7e8f9a0b1c2d",
+      "name": "PT Acme Indonesia",
+      "alias": "acme",
+      "enabled": true,
+      "domains": [{ "name": "acme.example" }],
+      "members": [{ "username": "acme-admin" }]
     }
   ]
 }

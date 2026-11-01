@@ -7,6 +7,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -23,7 +24,14 @@ class ShellSecurityTests {
 	MockMvc mvc;
 
 	@Test
-	void pagesRequireLogin() throws Exception {
+	void loginAsksForTheOrganizationScope() throws Exception {
+		mvc.perform(get("/oauth2/authorization/keycloak"))
+				.andExpect(status().isFound())
+				.andExpect(header().string("Location", containsString("organization")));
+	}
+
+	@Test
+	void pagesRequireLogin()throws Exception {
 		mvc.perform(get("/"))
 				.andExpect(status().isFound())
 				.andExpect(redirectedUrl("/oauth2/authorization/keycloak"));
