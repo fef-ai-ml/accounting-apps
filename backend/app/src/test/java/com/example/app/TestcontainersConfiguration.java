@@ -8,7 +8,8 @@ import org.testcontainers.utility.DockerImageName;
 
 /**
  * Postgres with the production split of roles: Flyway migrates as the container's superuser (the owner), the
- * application connects as {@code app_runtime}, which row-level security applies to.
+ * application connects as {@code app_runtime}, which row-level security applies to. The datasource credentials are
+ * deliberately not set here: {@code application.properties} supplies them, and ApiApplicationTests pins the role.
  */
 @TestConfiguration(proxyBeanMethods = false)
 class TestcontainersConfiguration {
@@ -23,8 +24,6 @@ class TestcontainersConfiguration {
 	DynamicPropertyRegistrar postgresProperties(PostgreSQLContainer postgres) {
 		return registry -> {
 			registry.add("spring.datasource.url", postgres::getJdbcUrl);
-			registry.add("spring.datasource.username", () -> "app_runtime");
-			registry.add("spring.datasource.password", () -> "app_runtime");
 			registry.add("spring.flyway.url", postgres::getJdbcUrl);
 			registry.add("spring.flyway.user", postgres::getUsername);
 			registry.add("spring.flyway.password", postgres::getPassword);

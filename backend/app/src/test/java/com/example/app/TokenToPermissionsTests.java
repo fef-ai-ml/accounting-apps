@@ -191,7 +191,9 @@ class TokenToPermissionsTests {
 
 	@Test
 	void idTokenIsUnauthorized() throws Exception {
-		mvc.perform(get("/api/iam/me").header(HttpHeaders.AUTHORIZATION, tokenOfType("ID", List.of("demo"), "editor", "EDITOR")))
+		String idToken = tokenOfType("ID", List.of("demo"), "editor", "EDITOR");
+
+		mvc.perform(get("/api/iam/me").header(HttpHeaders.AUTHORIZATION, idToken))
 				.andExpect(status().isUnauthorized());
 	}
 

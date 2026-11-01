@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -26,6 +27,9 @@ class ApiApplicationTests {
 	MockMvc mvc;
 
 	@Autowired
+	JdbcTemplate jdbc;
+
+	@Autowired
 	PermissionResolver permissionResolver;
 
 	@Test
@@ -43,6 +47,18 @@ class ApiApplicationTests {
 	void apiNeedsAToken() throws Exception {
 		mvc.perform(get("/api/tasks")).andExpect(status().isUnauthorized());
 		mvc.perform(get("/api/iam/me")).andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void connectsAsARoleThatRowLevelSecurityAppliesTo() {
+		// Superusers, table owners and BYPASSRLS roles skip RLS: the tenant isolation would be silently off.
+		assertThat(jdbc.queryForMap(
+				"select current_user::text as name, rolsuper, rolbypassrls from pg_roles where rolname = current_user"))
+				.containsEntry("name", "app_runtime")
+				.containsEntry("rolsuper", false)
+				.containsEntry("rolbypassrls", false);
+		assertThat(jdbc.queryForObject("select count(*) from pg_tables where tableowner = current_user", Integer.class))
+				.isZero();
 	}
 
 }
