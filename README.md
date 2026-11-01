@@ -140,14 +140,14 @@ Until step 2, the organization's users log in but get no permissions. Changes re
 
 1. Create the runtime role **before the backend starts**: the `iam` and `task` migrations `GRANT` to `app_runtime`, and
    Flyway fails if it is missing. `infra/postgres/init/02-app-runtime.sql` only runs on an empty volume. Postgres may be
-   on a remote Docker; `docker exec` works through `DOCKER_HOST`.
+   on a remote Docker; `docker compose` works through `DOCKER_HOST`.
 
    ```fish
-   docker exec zk-spring-postgres-1 psql -U app -d app -c "CREATE ROLE app_runtime LOGIN PASSWORD 'app_runtime' NOSUPERUSER NOBYPASSRLS;"
+   docker compose exec postgres psql -U app -d app -c "CREATE ROLE app_runtime LOGIN PASSWORD 'app_runtime' NOSUPERUSER NOBYPASSRLS;"
    ```
 
 2. Re-import the Keycloak realm (it now has organizations): admin console -> realm `zk-spring` -> Realm settings ->
-   Action -> Delete; then `docker-compose build keycloak; docker-compose up -d keycloak`. The dev realm holds only demo
+   Action -> Delete; then `docker compose build keycloak; docker compose up -d keycloak`. The dev realm holds only demo
    data; manual changes to it are lost.
 3. `./mvnw install -DskipTests`, then start the backend (Flyway adds `iam.tenant` and moves existing tasks to `demo`).
 

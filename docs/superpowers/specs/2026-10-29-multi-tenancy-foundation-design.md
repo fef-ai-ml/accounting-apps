@@ -193,7 +193,8 @@ schema, keeping the module-owns-its-schema rule.
 - `KeycloakTenantTests`: list with one alias, JSON object with one key, empty, two entries, missing, wrong type.
 - `TaskApiTests` with two tenants (Testcontainers): A creates; B lists nothing; B `GET`/`PUT`/`DELETE` on A's id → 404;
   token without organization → 403. Sets a `KeycloakAuthentication` per request instead of stubbing `TenantDirectory`, so the module still boots alone.
-- `RlsIsolationTests` (native SQL as `app_runtime`, Hibernate bypassed): with tenant A set, B's rows count 0; with
+- RLS without Hibernate (`TenancyTests`, `TaskApiTests.rowLevelSecurityAloneHidesOtherTenantsTasks`; native SQL as
+  `app_runtime`): with tenant A set, B's rows count 0; with
   nothing set, all counts 0; inserting a row with B's `tenant_id` while A is set is rejected. First asserts that the
   connected role is not superuser, owns no table and has no `BYPASSRLS`, otherwise the other assertions prove nothing.
 - Pool-leak test: pool size 1; a request as A followed by a request without tenant on the same connection sees no rows.
