@@ -61,4 +61,22 @@ class ApiApplicationTests {
 				.isZero();
 	}
 
+	@Test
+	void everyTableTheApiCanWriteHasRowLevelSecurity() {
+		// Default privileges grant DML on future module tables before any RLS exists, and an owner-owned view bypasses RLS.
+		assertThat(jdbc.queryForList("""
+				select n.nspname || '.' || c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+				where c.relkind in ('r', 'p') and n.nspname not in ('pg_catalog', 'information_schema') and n.nspname not like 'pg_toast%'
+				  and (has_table_privilege('app_runtime', c.oid, 'INSERT,UPDATE,DELETE')
+				       or exists (select 1 from pg_attribute a where a.attrelid = c.oid and a.attname = 'tenant_id' and not a.attisdropped))
+				  and not (c.relrowsecurity and exists (select 1 from pg_policy p where p.polrelid = c.oid))
+				""", String.class)).isEmpty();
+		assertThat(jdbc.queryForList("""
+				select c.oid::regclass::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
+				where c.relkind in ('v', 'm') and n.nspname not in ('pg_catalog', 'information_schema') and n.nspname not like 'pg_toast%'
+				  and has_table_privilege('app_runtime', c.oid, 'SELECT')
+				  and (c.relkind = 'm' or not coalesce('security_invoker=true' = any(c.reloptions), false))
+				""", String.class)).isEmpty();
+	}
+
 }

@@ -153,10 +153,9 @@ class TenancyTests {
 
 	@Test
 	void insertWithoutTenantIsRejected() {
-		// Rejected by the RLS check (root marker stamped) or by NOT NULL (nothing stamped); never stored silently.
+		// The root marker is stamped, so the WITH CHECK policy rejects the row.
 		assertThatThrownBy(() -> as(null, () -> notes.save(new Note("orphan"))))
-				.isInstanceOf(RuntimeException.class);
-		assertThat(asTenant(A, this::texts)).doesNotContain("orphan");
+				.hasStackTraceContaining("row-level security");
 	}
 
 }

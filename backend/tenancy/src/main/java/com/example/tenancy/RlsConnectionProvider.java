@@ -96,7 +96,7 @@ final class RlsConnectionProvider implements MultiTenantConnectionProvider<UUID>
 			dataSource.unwrap(HikariDataSource.class).evictConnection(connection);
 		}
 		else {
-			connection.close();
+			connection.abort(Runnable::run);
 		}
 	}
 
