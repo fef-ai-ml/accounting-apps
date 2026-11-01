@@ -35,6 +35,12 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
 - **CSRF is off for `/zkau/**` and `POST /zkau` is permitAll** in `UiSecurity`: ZK binds AJAX requests to a desktop in
   the session, and an expired session must reach ZK's timeout handling instead of a Keycloak redirect.
 - **Keycloak endpoints are configured explicitly**, not discovered, so the shell starts while Keycloak is down.
+- **Tenants are Keycloak organizations; isolation is `tenant_id` + Hibernate `@TenantId` + Postgres RLS.** The tenant
+  comes only from the token's `organization` claim (aliases), resolved once by `KeycloakJwtAuthenticationConverter`
+  through `TenantDirectory` (implemented by `iam`) and carried on `KeycloakAuthentication`. `backend/tenancy` sets it
+  on Hibernate and on each pooled connection (`app.tenant_id`). One user = one tenant.
+- **The API connects as `app_runtime`** (no superuser, owns nothing), Flyway as `app`; RLS does not apply to owners
+  and superusers.
 
 ## Gotchas
 
@@ -58,6 +64,25 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   socket). So `compose.yaml` must not bind-mount repo files; copy them into an image under `infra/` instead. Backend
   tests against a remote daemon need `TESTCONTAINERS_HOST_OVERRIDE=<daemon host>` and
   `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=<socket path on that host>` (`/run/user/1000/podman/podman.sock`).
+- Every tenant table needs: `tenant_id UUID NOT NULL`, `@TenantId` on the entity, `ENABLE ROW LEVEL SECURITY` with a
+  policy using `nullif(current_setting('app.tenant_id', true), '')::uuid` in both `USING` and `WITH CHECK`, grants to
+  `app_runtime` in the module's migration, and indexes/uniques starting with `tenant_id`.
+- Flyway versions are global across module folders: two modules must not use the same `V<date>_<n>` on the same day.
+- Never declare `clientScopes` in the realm file: Keycloak then skips its built-in scopes and tokens lose `sub` and
+  `preferred_username`. The `zk-shell` client needs the `organization` scope, or every user has no tenant.
+- Code running outside a request (future scheduled jobs, `@Async`) has no `KeycloakAuthentication` and therefore sees
+  no tenant data; it must set an authentication for the tenant it works for.
+- Backend tests run the application as `app_runtime` (`app-runtime-role.sql` + `TestcontainersConfiguration` with a
+  `DynamicPropertyRegistrar`); never use `@ServiceConnection` there, it would connect as the superuser and every RLS
+  test would pass for the wrong reason.
+- Tests for a tenant table must also prove RLS without Hibernate: `@TenantId` adds `tenant_id = ?` itself, so a
+  cross-tenant test through repositories passes even with the RLS policy deleted. Use native SQL inside a tenant
+  transaction (see `TenancyTests.rowLevelSecurityAloneHidesOtherTenants`,
+  `TaskApiTests.rowLevelSecurityAloneHidesOtherTenantsTasks`), and keep the guard that the test connection is
+  `app_runtime` (`ApiApplicationTests.connectsAsARoleThatRowLevelSecurityAppliesTo`).
+- With the maintainer's remote Docker (SSH-forwarded Podman socket), a second Testcontainers Postgres in the same JVM
+  fails (`localhost:2375 failed to respond`); test classes with different Spring contexts in one module carry
+  `@DirtiesContext` so each container stops before the next starts.
 
 ## Testing
 
@@ -73,11 +98,13 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
 
 - Verified: whole build and all tests (`./mvnw verify`), including backend tests against Testcontainers Postgres and a
   real signed token through decoder, converter, `iam` resolver and `@PreAuthorize` (`TokenToPermissionsTests`).
+- Verified 2026-11-01 (`./mvnw verify`): tenant isolation as `app_runtime` through Hibernate and through RLS alone,
+  tenants resolved from real signed tokens end to end, suspended/unknown/multiple organizations get no permissions.
 - Verified 2026-10-28 by hand against Keycloak 26.8.1 on the home-lab (README "Manual end-to-end check" rows 1–6):
   login redirect, viewer/editor/admin permissions in the UI, logout back to the Keycloak login page, 401 + Bearer from
   the API.
-- Not yet verified by hand: README checklist rows 7–10 (backend down, ZK session timeout, silent token refresh,
-  Keycloak session ended).
+- Not yet verified by hand: README checklist rows 7–14 (backend down, ZK session timeout, silent token refresh,
+  Keycloak session ended, and the multi-tenancy rows 11–14).
 - Not built yet: see "Follow-ups" in `docs/superpowers/specs/2026-10-28-auth-keycloak-iam-design.md` (admin UI for
   role permissions, REST PermissionResolver for split services, production Keycloak, ...), pagination, a second
   example module, ArchUnit/Spring Modulith boundary tests.

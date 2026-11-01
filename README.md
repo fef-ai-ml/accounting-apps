@@ -40,7 +40,15 @@ docker compose up -d                                  # PostgreSQL :5432, Keyclo
 
 (After the first `./mvnw install -DskipTests`, so the module jars are in your local repo.)
 
-Demo users (dev only, password = username): `admin` (everything), `editor` (read + write), `viewer` (read).
+Demo users (dev only, password = username):
+
+| User | Role | Organization (tenant) |
+|---|---|---|
+| `admin` | `ADMIN` (everything) | `demo` |
+| `editor` | `EDITOR` (read + write) | `demo` |
+| `viewer` | `VIEWER` (read) | `demo` |
+| `acme-admin` | `ADMIN` | `acme` |
+
 Keycloak admin console: `http://localhost:8180`, `admin`/`admin`.
 
 Keycloak and the apps must agree on one URL for Keycloak, because tokens carry it as their issuer. The defaults
@@ -96,11 +104,52 @@ Use a private browser window per user, at `http://localhost:8081`:
 | 8 | Restart the shell with `env SERVER_SERVLET_SESSION_TIMEOUT=1m`, log in, wait 2 minutes, click Edit | Page reloads through login (Keycloak may sign you straight back in); no raw HTML or error dialog |
 | 9 | Leave a page idle for more than 5 minutes (access-token lifetime), then act | It still works (the shell refreshes the token silently) |
 | 10 | In the Keycloak admin console (`http://localhost:8180`, `admin`/`admin`) sign out the `editor` session, wait more than 5 minutes, click Save | Sent to `/logout`, then the Keycloak login page |
+| 11 | Log in as `acme-admin`/`acme-admin` | None of demo's tasks are visible; its own task list is empty |
+| 12 | `UPDATE iam.tenant SET status='SUSPENDED' WHERE alias='acme'` | Within 60 s `acme-admin` sees "Your organization has no access" (set it back to `ACTIVE` afterwards) |
+| 13 | Log in as a demo user | Tasks created before the upgrade still show |
+| 14 | Log in as a Keycloak user in no organization | "Your organization has no access" |
 
 If you are sent back to the login page after every login, the shell log shows `API call unauthorized` with the
 backend's `WWW-Authenticate` reason (usually an issuer mismatch, see above).
 
 Tests: `./mvnw verify` (backend tests start PostgreSQL through Testcontainers, so Docker must be usable).
+
+## Multi-tenancy
+
+Each customer company is a tenant, which is one Keycloak organization. Tenant tables carry a `tenant_id` column; the
+Hibernate tenant filter and Postgres row-level security (RLS) both enforce it. The API connects as the Postgres role
+`app_runtime` (RLS applies to it), Flyway as the owner `app`. A user belongs to exactly one organization; the tenant
+comes only from the token's `organization` claim.
+
+Environment variables: `DB_RUNTIME_USER` / `DB_RUNTIME_PASSWORD` (the API; defaults are the dev password
+`app_runtime`, so production must set them) and `DB_USER` / `DB_PASSWORD` (used only by Flyway).
+
+### Onboard a customer
+
+1. Keycloak admin console, realm `zk-spring` -> Organizations -> Create (alias, name, domain), add members, give them
+   realm roles; copy the organization id.
+2. As `app`: `INSERT INTO iam.tenant (id, alias, name, status) VALUES ('<organization id>', '<alias>', '<name>', 'ACTIVE');`
+
+Until step 2, the organization's users log in but get no permissions. Changes reach the API within 60 seconds.
+
+### Suspend a customer
+
+`UPDATE iam.tenant SET status = 'SUSPENDED' WHERE alias = '<alias>';` (effective within 60 seconds).
+
+### Upgrading an existing setup
+
+1. Create the runtime role **before the backend starts**: the `iam` and `task` migrations `GRANT` to `app_runtime`, and
+   Flyway fails if it is missing. `infra/postgres/init/02-app-runtime.sql` only runs on an empty volume. Postgres may be
+   on a remote Docker; `docker exec` works through `DOCKER_HOST`.
+
+   ```fish
+   docker exec zk-spring-postgres-1 psql -U app -d app -c "CREATE ROLE app_runtime LOGIN PASSWORD 'app_runtime' NOSUPERUSER NOBYPASSRLS;"
+   ```
+
+2. Re-import the Keycloak realm (it now has organizations): admin console -> realm `zk-spring` -> Realm settings ->
+   Action -> Delete; then `docker-compose build keycloak; docker-compose up -d keycloak`. The dev realm holds only demo
+   data; manual changes to it are lost.
+3. `./mvnw install -DskipTests`, then start the backend (Flyway adds `iam.tenant` and moves existing tasks to `demo`).
 
 ## Add a feature module
 

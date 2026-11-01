@@ -1,7 +1,7 @@
 # Multi-tenancy foundation: Keycloak Organizations + `tenant_id` + Postgres RLS
 
 Date: 2026-10-29
-Status: approved design, awaiting implementation plan
+Status: implemented on feat/multi-tenancy
 
 ## Goal
 
@@ -79,8 +79,9 @@ the connection (RLS shows 0 rows and rejects writes).
   is a list (or JSON object, whose keys are aliases) with exactly one entry; empty for a missing, empty, multi-entry or
   malformed claim. Same style as `KeycloakRoles`.
 - `TenantDirectory` interface: `Optional<UUID> tenantIdOf(String alias)`. When no bean exists, `SecurityModule`
-  registers a fallback that returns empty for every alias and logs a warning once (fail closed, like
-  `PermissionResolver.denyAll()`).
+  registers a fallback (`TenantDirectory.none()`) that returns empty for every alias and logs a warning once (fail
+  closed, like `PermissionResolver.denyAll()`).
+- `KeycloakJwtAuthenticationConverter` resolves the tenant once and returns a `KeycloakAuthentication` carrying it.
 - Convenience: `static Optional<UUID> tenantId(Jwt jwt, TenantDirectory directory)` combining the two.
 
 ### `backend/tenancy` (new module)
@@ -88,14 +89,16 @@ the connection (RLS shows 0 rows and rejects writes).
 Entered through `TenancyModule` (`@Configuration`, `@Import(SecurityModule.class)`), imported by every module that
 owns tenant data. It depends on Hibernate, which is why it is not part of `security` or `common`.
 
-- `JwtTenantIdentifierResolver implements CurrentTenantIdentifierResolver<UUID>`: reads the `Jwt` from
-  `SecurityContextHolder`, resolves it through `TenantDirectory`, and returns the tenant UUID. Without an
+- `JwtTenantIdentifierResolver implements CurrentTenantIdentifierResolver<UUID>`: reads the tenant
+  from the `KeycloakAuthentication` in `SecurityContextHolder` and returns it (no lookup here: a `TenantDirectory`
+  query inside the resolver would recurse into Hibernate). Without an
   authenticated JWT or a resolvable tenant it returns the root marker (a constant all-zero UUID) and `isRoot` answers
   true for it, so Hibernate does not filter; global tables (`iam.*`) are readable and tenant tables are protected by
   RLS (no `app.tenant_id` is set for root).
 - `RlsConnectionProvider implements MultiTenantConnectionProvider<UUID>`: wraps the Spring `DataSource`. On
-  `getConnection(tenant)` it runs `select set_config('app.tenant_id', ?, false)` for a real tenant and nothing for
-  root; on `releaseConnection` it runs `select set_config('app.tenant_id', '', false)`. If the reset fails, the
+  `getConnection(tenant)` it runs `select set_config('app.tenant_id', ?, false)` for a real tenant and `''` for
+  root; on `releaseConnection` it runs `select set_config('app.tenant_id', '', false)`. When the connection is not in
+  autocommit, the setting is committed on its own so a later rollback cannot undo it. If the reset fails, the
   connection is aborted (closed physically) and never returned to the pool.
 - A `HibernatePropertiesCustomizer` registers both with Hibernate.
 - The exact Hibernate 7 wiring (provider + `@TenantId` discriminator together, `isRoot`) is proven by the first task
@@ -106,7 +109,7 @@ data. This rule goes into CLAUDE.md.
 
 ### `backend/iam` (changed)
 
-- Migration `V20261029_1__create_tenant_table.sql`:
+- Migration `V20261030_1__create_tenant_table.sql`:
   `iam.tenant(id UUID PRIMARY KEY, alias VARCHAR(100) NOT NULL UNIQUE, name VARCHAR(200) NOT NULL,
   status VARCHAR(20) NOT NULL CHECK (status IN ('ACTIVE','SUSPENDED')), created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
   seeded with `demo` (`7f3a0c4e-1b2d-4e5f-8a9b-0c1d2e3f4a5b`, `ACTIVE`) and `acme`
@@ -123,9 +126,9 @@ data. This rule goes into CLAUDE.md.
 ### `backend/task` (changed)
 
 - `Task` gains `@TenantId @Column(name = "tenant_id", nullable = false, updatable = false) private UUID tenantId;`.
-- Migration `V20261029_1__add_task_tenant.sql`: add nullable `tenant_id`, backfill every row with the `demo` UUID, set
+- Migration `V20261030_2__add_task_tenant.sql`: add nullable `tenant_id`, backfill every row with the `demo` UUID, set
   `NOT NULL`, index `(tenant_id)`, `ENABLE ROW LEVEL SECURITY`, policy `tenant_isolation` with both `USING` and
-  `WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid)`, grants
+  `WITH CHECK (tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid)` (after the reset the setting is `''`, which does not cast to uuid), grants
   `SELECT, INSERT, UPDATE, DELETE` on the table and `USAGE` on schema and sequence to `app_runtime`.
 - `TaskModule` imports `TenancyModule`. Fetching another tenant's id yields 404 through the existing
   `TaskNotFoundException` (the row is filtered, not forbidden), so existence is not revealed.
@@ -189,7 +192,7 @@ schema, keeping the module-owns-its-schema rule.
 
 - `KeycloakTenantTests`: list with one alias, JSON object with one key, empty, two entries, missing, wrong type.
 - `TaskApiTests` with two tenants (Testcontainers): A creates; B lists nothing; B `GET`/`PUT`/`DELETE` on A's id → 404;
-  token without organization → 403. Uses a stub `TenantDirectory` so the module still boots alone.
+  token without organization → 403. Sets a `KeycloakAuthentication` per request instead of stubbing `TenantDirectory`, so the module still boots alone.
 - `RlsIsolationTests` (native SQL as `app_runtime`, Hibernate bypassed): with tenant A set, B's rows count 0; with
   nothing set, all counts 0; inserting a row with B's `tenant_id` while A is set is rejected. First asserts that the
   connected role is not superuser, owns no table and has no `BYPASSRLS`, otherwise the other assertions prove nothing.
