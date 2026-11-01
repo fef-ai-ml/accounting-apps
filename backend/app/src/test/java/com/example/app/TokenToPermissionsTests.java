@@ -48,7 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@code DbPermissionResolver} reading the seeded {@code iam} tables, and {@code @PreAuthorize}. Only the signing key
  * is the test's own (it replaces Keycloak's JWKS); no authorities are injected.
  */
-@SpringBootTest
+@SpringBootTest(properties = "iam.demo-tenants=true")
 @AutoConfigureMockMvc
 @Import({ TokenToPermissionsTests.Config.class, TestcontainersConfiguration.class })
 // Test classes here use different contexts and so start their own container; stop each before the next starts.

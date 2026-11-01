@@ -26,7 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(classes = IamApiTests.TestApp.class,
 		properties = {"spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9/realms/test",
-				"spring.jpa.hibernate.ddl-auto=validate"})
+				"spring.jpa.hibernate.ddl-auto=validate", "spring.flyway.locations=classpath:db/test/iam",
+				"iam.demo-tenants=true"})
 @AutoConfigureMockMvc
 class IamApiTests {
 

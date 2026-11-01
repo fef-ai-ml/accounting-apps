@@ -34,7 +34,7 @@ Rules that keep the modules separable:
 
 ```
 docker compose up -d                                  # PostgreSQL :5432, Keycloak :8180 (realm zk-spring)
-./mvnw -pl backend/app spring-boot:run                # API  http://localhost:8080  (Swagger UI: /swagger-ui.html)
+./mvnw -pl backend/app spring-boot:run -Dspring-boot.run.profiles=dev  # API  http://localhost:8080  (Swagger UI: /swagger-ui.html)
 ./mvnw -pl frontend/shell spring-boot:run             # UI   http://localhost:8081  (log in through Keycloak)
 ```
 
@@ -86,7 +86,7 @@ while the install is still running resolves stale jars and comes up without Spri
 
 ```
 ./mvnw -q install -DskipTests
-./mvnw -pl backend/app spring-boot:run       # add env DB_URL=... if Postgres is not on localhost
+./mvnw -pl backend/app spring-boot:run -Dspring-boot.run.profiles=dev  # add env DB_URL=... if Postgres is not on localhost
 ./mvnw -pl frontend/shell spring-boot:run
 ```
 
@@ -135,10 +135,8 @@ Until step 2, the organization's users log in but get no permissions. Changes re
 
 ### Production: the demo tenants
 
-The migrations seed the demo tenants `demo` and `acme` as ACTIVE, and their ids are public in this repo. In
-production suspend them before onboarding customers, and never create Keycloak organizations with those aliases:
-
-`UPDATE iam.tenant SET status = 'SUSPENDED' WHERE alias IN ('demo', 'acme');`
+The demo tenants `demo` and `acme` (public ids) are seeded only by the dev profile (`iam.demo-tenants=true`); production
+never enables it. Never create Keycloak organizations with those aliases.
 
 ### Suspend a customer
 
@@ -162,7 +160,7 @@ token carries only the alias, so a new organization with an old alias inherits t
 2. Re-import the Keycloak realm (it now has organizations): admin console -> realm `zk-spring` -> Realm settings ->
    Action -> Delete; then `docker compose build keycloak; docker compose up -d keycloak`. The dev realm holds only demo
    data; manual changes to it are lost.
-3. `./mvnw install -DskipTests`, then start the backend (Flyway adds `iam.tenant` and moves existing tasks to `demo`).
+3. `./mvnw install -DskipTests`, then start the backend with the dev profile so `demo`/`acme` exist (Flyway adds `iam.tenant` and moves existing tasks to `demo`).
 
 ## Add a feature module
 

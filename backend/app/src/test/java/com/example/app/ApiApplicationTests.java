@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "iam.demo-tenants=true")
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 // Test classes here use different contexts and so start their own container; stop each before the next starts.

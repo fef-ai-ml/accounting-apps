@@ -24,7 +24,9 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   (`TaskModule`, `TaskUiModule`; apps are `backend/app`, `frontend/shell`). This is what makes a module splittable.
 - **Each backend module owns its Postgres schema** (`task`), entity `@Table(schema = ...)`, and migrations in
   `db/migration/<module>/` with date-based versions (`V20261027_1__...`) so modules never collide. Modules add their
-  migration folder through a `FlywayConfigurationCustomizer` bean. No cross-module joins or foreign keys.
+  migration folder through a `FlywayConfigurationCustomizer` bean that replaces Boot's default
+  `classpath:db/migration` with its own folder (the default scans recursively and would run every module's migrations);
+  never put migrations in `db/migration` directly. No cross-module joins or foreign keys.
 - **Frontend DTOs are duplicated on purpose**; UI modules never import backend classes. The REST API is the contract.
 - **Keycloak authenticates, `iam` authorizes.** Keycloak supplies realm roles; `backend/iam` maps them to
   `<module>:<action>` permissions. Modules check permissions only and never import `iam`; they get them through the
@@ -86,6 +88,8 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
 - With the maintainer's remote Docker (SSH-forwarded Podman socket), a second Testcontainers Postgres in the same JVM
   fails (`localhost:2375 failed to respond`); test classes with different Spring contexts in one module carry
   `@DirtiesContext` so each container stops before the next starts.
+- Dev-only data lives in `db/demo/<module>` as repeatable migrations behind a property (`iam.demo-tenants`, set by the
+  backend's `dev` profile); test-only migrations live in `db/test/<module>`, added with `spring.flyway.locations` in the test.
 
 ## Testing
 
