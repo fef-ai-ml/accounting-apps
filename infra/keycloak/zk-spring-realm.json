@@ -27,7 +27,24 @@
       "webOrigins": ["http://localhost:8081"],
       "attributes": {
         "post.logout.redirect.uris": "http://localhost:8081/*"
-      }
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-organization-membership-mapper",
+          "config": {
+            "claim.name": "tenant",
+            "addOrganizationId": "true",
+            "addOrganizationAttributes": "false",
+            "multivalued": "true",
+            "jsonType.label": "JSON",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [

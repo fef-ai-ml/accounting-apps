@@ -12,7 +12,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 /**
  * Builds the authentication for a Keycloak access token: authorities are permission codes (e.g. {@code task:write})
  * from the {@link PermissionResolver}, the name is {@code preferred_username},
- * and the tenant of the token's Keycloak organization.
+ * and the tenant is the token's Keycloak organization id once the {@link TenantDirectory} confirms it is active.
  */
 public class KeycloakJwtAuthenticationConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 
@@ -32,7 +32,7 @@ public class KeycloakJwtAuthenticationConverter implements Converter<Jwt, Abstra
 				.<GrantedAuthority>map(SimpleGrantedAuthority::new)
 				.toList();
 		String username = jwt.getClaimAsString("preferred_username");
-		UUID tenantId = KeycloakTenant.alias(jwt).flatMap(tenantDirectory::tenantIdOf).orElse(null);
+		UUID tenantId = KeycloakTenant.activeTenant(jwt, tenantDirectory).orElse(null);
 		return new KeycloakAuthentication(jwt, authorities, username != null ? username : jwt.getSubject(), tenantId);
 	}
 

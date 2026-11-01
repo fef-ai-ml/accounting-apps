@@ -38,8 +38,10 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   the session, and an expired session must reach ZK's timeout handling instead of a Keycloak redirect.
 - **Keycloak endpoints are configured explicitly**, not discovered, so the shell starts while Keycloak is down.
 - **Tenants are Keycloak organizations; isolation is `tenant_id` + Hibernate `@TenantId` + Postgres RLS.** The tenant
-  comes only from the token's `organization` claim (aliases), resolved once by `KeycloakJwtAuthenticationConverter`
-  through `TenantDirectory` (implemented by `iam`) and carried on `KeycloakAuthentication`. `backend/tenancy` sets it
+  is the organization **id** from the token's `tenant` claim (a membership mapper with "add organization id" on the
+  `zk-shell` client), never the alias (a deleted alias can be re-created for another company). It is resolved once by
+  `KeycloakJwtAuthenticationConverter`, confirmed ACTIVE through `TenantDirectory` (implemented by `iam`) and carried
+  on `KeycloakAuthentication`. `backend/tenancy` sets it
   on Hibernate and on each pooled connection (`app.tenant_id`). One user = one tenant.
 - **The API connects as `app_runtime`** (no superuser, owns nothing), Flyway as `app`; RLS does not apply to owners
   and superusers.
@@ -72,6 +74,8 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
 - Flyway versions are global across module folders: two modules must not use the same `V<date>_<n>` on the same day.
 - Never declare `clientScopes` in the realm file: Keycloak then skips its built-in scopes and tokens lose `sub` and
   `preferred_username`. The `zk-shell` client needs the `organization` scope, or every user has no tenant.
+- The `tenant` mapper on `zk-shell` must write its own claim: on `organization` Keycloak merges it with the built-in
+  mapper into a mixed list (`[{"demo":{"id":…}}, "demo"]`) and every user has no tenant.
 - Code running outside a request (future scheduled jobs, `@Async`) has no `KeycloakAuthentication` and therefore sees
   no tenant data; it must set an authentication for the tenant it works for. Set it before the transaction starts,
   use one transaction per tenant, and never switch tenants inside one (Hibernate fixes the tenant when the session

@@ -11,15 +11,15 @@ import org.springframework.stereotype.Component;
 import com.example.security.TenantDirectory;
 
 /**
- * Tenants from {@code iam.tenant}, cached per alias for 60 seconds: suspending or onboarding a tenant reaches running
- * instances within a minute.
+ * Tenants from {@code iam.tenant}, keyed by Keycloak organization id and cached for 60 seconds: suspending or onboarding
+ * a tenant reaches running instances within a minute.
  */
 @Component
 public class DbTenantDirectory implements TenantDirectory {
 
 	private final TenantRepository repository;
 
-	private final Cache<String, Optional<TenantInfo>> cache = Caffeine.newBuilder()
+	private final Cache<UUID, Optional<TenantInfo>> cache = Caffeine.newBuilder()
 			.expireAfterWrite(Duration.ofSeconds(60))
 			.maximumSize(10_000)
 			.build();
@@ -29,13 +29,13 @@ public class DbTenantDirectory implements TenantDirectory {
 	}
 
 	@Override
-	public Optional<UUID> tenantIdOf(String alias) {
-		return find(alias).filter(TenantInfo::active).map(TenantInfo::id);
+	public boolean isActive(UUID tenantId) {
+		return find(tenantId).filter(TenantInfo::active).isPresent();
 	}
 
 	/** The tenant whatever its status, for showing it to the user. */
-	Optional<TenantInfo> find(String alias) {
-		return cache.get(alias, key -> repository.findByAlias(key).map(TenantInfo::of));
+	Optional<TenantInfo> find(UUID tenantId) {
+		return cache.get(tenantId, key -> repository.findById(key).map(TenantInfo::of));
 	}
 
 }

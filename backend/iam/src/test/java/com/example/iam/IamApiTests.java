@@ -48,11 +48,19 @@ class IamApiTests {
 
 	static final UUID ACME = UUID.fromString("b2c4e6a8-0d1f-4a3b-9c5d-7e8f9a0b1c2d");
 
+	/** Test-only SUSPENDED tenant, see {@code db/test/iam}. */
+	static final UUID CLOSED = UUID.fromString("c0c0c0c0-0000-4000-8000-000000000003");
+
 	@Autowired
 	DbTenantDirectory tenants;
 
 	private static Jwt token(Map<String, Object> claims) {
 		return Jwt.withTokenValue("t").header("alg", "none").subject("sub-1").claims(c -> c.putAll(claims)).build();
+	}
+
+	/** The {@code tenant} claim as Keycloak's membership mapper writes it: alias to organization id. */
+	private static Map<String, Object> tenant(String alias, UUID id) {
+		return Map.of(alias, Map.of("id", id.toString()));
 	}
 
 	@Test
@@ -80,23 +88,23 @@ class IamApiTests {
 	@Test
 	void tokenWithoutRolesHasNoPermissions() {
 		// Active tenant, so only the missing roles can explain the empty result.
-		assertThat(resolver.permissionsFor(token(Map.of("scope", "openid", "organization", List.of("demo"))))).isEmpty();
+		assertThat(resolver.permissionsFor(token(Map.of("scope", "openid", "tenant", tenant("demo", DEMO))))).isEmpty();
 	}
 
 	@Test
 	void resolverReadsRolesFromTheToken() {
 		Jwt editor = token(Map.of("realm_access", Map.of("roles", List.of("EDITOR", "offline_access")),
-				"organization", List.of("demo")));
+				"tenant", tenant("demo", DEMO)));
 
 		assertThat(resolver.permissionsFor(editor)).containsExactlyInAnyOrder("task:read", "task:write");
 	}
 
 	@Test
-	void directoryResolvesOnlyActiveTenants() {
-		assertThat(tenants.tenantIdOf("demo")).contains(DEMO);
-		assertThat(tenants.tenantIdOf("acme")).contains(ACME);
-		assertThat(tenants.tenantIdOf("closed")).isEmpty();
-		assertThat(tenants.tenantIdOf("nobody")).isEmpty();
+	void directoryConfirmsOnlyActiveTenants() {
+		assertThat(tenants.isActive(DEMO)).isTrue();
+		assertThat(tenants.isActive(ACME)).isTrue();
+		assertThat(tenants.isActive(CLOSED)).isFalse();
+		assertThat(tenants.isActive(UUID.randomUUID())).isFalse();
 	}
 
 	@Test
@@ -105,17 +113,34 @@ class IamApiTests {
 
 		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles)))).isEmpty();
 		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles,
-				"organization", List.of("closed"))))).isEmpty();
+				"tenant", tenant("closed", CLOSED))))).isEmpty();
 		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles,
-				"organization", List.of("nobody"))))).isEmpty();
+				"tenant", tenant("nobody", UUID.randomUUID()))))).isEmpty();
+		Map<String, Object> twoOrganizations =
+				Map.of("demo", Map.of("id", DEMO.toString()), "acme", Map.of("id", ACME.toString()));
 		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles,
-				"organization", List.of("demo", "acme"))))).isEmpty();
+				"tenant", twoOrganizations)))).isEmpty();
+		// The alias alone, as the built-in organization scope writes it, is no tenant.
+		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles,
+				"organization", List.of("demo"))))).isEmpty();
+	}
+
+	@Test
+	void reCreatedOrganizationDoesNotInheritTheTenant() throws Exception {
+		// Organization "demo" deleted in Keycloak and created again: same alias, new id.
+		Map<String, Object> reCreated = tenant("demo", UUID.randomUUID());
+
+		assertThat(resolver.permissionsFor(token(Map.of("realm_access", Map.of("roles", List.of("ADMIN")),
+				"tenant", reCreated)))).isEmpty();
+		mvc.perform(get("/api/iam/me").with(jwt().jwt(j -> j.claim("tenant", reCreated))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.tenant").value(nullValue()));
 	}
 
 	@Test
 	void meShowsTheTenant() throws Exception {
 		mvc.perform(get("/api/iam/me").with(jwt().jwt(j -> j.claim("preferred_username", "editor")
-						.claim("organization", List.of("demo")))))
+						.claim("tenant", tenant("demo", DEMO)))))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.tenant.id").value(DEMO.toString()))
 				.andExpect(jsonPath("$.tenant.alias").value("demo"))
@@ -125,7 +150,7 @@ class IamApiTests {
 
 	@Test
 	void meShowsASuspendedTenantSoTheUiCanExplain() throws Exception {
-		mvc.perform(get("/api/iam/me").with(jwt().jwt(j -> j.claim("organization", List.of("closed")))))
+		mvc.perform(get("/api/iam/me").with(jwt().jwt(j -> j.claim("tenant", tenant("closed", CLOSED)))))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.tenant.status").value("SUSPENDED"));
 	}

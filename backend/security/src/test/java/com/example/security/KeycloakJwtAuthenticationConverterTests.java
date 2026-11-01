@@ -2,7 +2,6 @@ package com.example.security;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -73,11 +72,10 @@ class KeycloakJwtAuthenticationConverterTests {
 	@Test
 	void carriesTheTenantOfTheTokensOrganization() {
 		UUID demo = UUID.fromString("7f3a0c4e-1b2d-4e5f-8a9b-0c1d2e3f4a5b");
-		TenantDirectory directory = alias -> "demo".equals(alias) ? Optional.of(demo) : Optional.empty();
 		KeycloakJwtAuthenticationConverter converter =
-				new KeycloakJwtAuthenticationConverter(PermissionResolver.denyAll(), directory);
+				new KeycloakJwtAuthenticationConverter(PermissionResolver.denyAll(), demo::equals);
 		Jwt jwt = Jwt.withTokenValue("t").header("alg", "none").subject("sub-1")
-				.claim("organization", List.of("demo")).build();
+				.claim("tenant", Map.of("demo", Map.of("id", demo.toString()))).build();
 
 		KeycloakAuthentication authentication = (KeycloakAuthentication) converter.convert(jwt);
 
@@ -85,11 +83,11 @@ class KeycloakJwtAuthenticationConverterTests {
 	}
 
 	@Test
-	void unknownOrganizationHasNoTenant() {
+	void inactiveOrUnknownOrganizationHasNoTenant() {
 		KeycloakJwtAuthenticationConverter converter =
 				new KeycloakJwtAuthenticationConverter(PermissionResolver.denyAll(), TenantDirectory.none());
 		Jwt jwt = Jwt.withTokenValue("t").header("alg", "none").subject("sub-1")
-				.claim("organization", List.of("demo")).build();
+				.claim("tenant", Map.of("demo", Map.of("id", "7f3a0c4e-1b2d-4e5f-8a9b-0c1d2e3f4a5b"))).build();
 
 		assertThat(((KeycloakAuthentication) converter.convert(jwt)).getTenantId()).isEmpty();
 	}

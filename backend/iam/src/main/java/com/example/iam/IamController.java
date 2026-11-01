@@ -40,7 +40,7 @@ class IamController {
 				.map(GrantedAuthority::getAuthority)
 				.sorted()
 				.toList();
-		TenantResponse tenant = KeycloakTenant.alias(jwt).flatMap(tenants::find).map(TenantResponse::of).orElse(null);
+		TenantResponse tenant = KeycloakTenant.id(jwt).flatMap(tenants::find).map(TenantResponse::of).orElse(null);
 		return new MeResponse(username, name, roles, permissions, tenant);
 	}
 

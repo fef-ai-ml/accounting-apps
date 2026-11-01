@@ -9,6 +9,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 interface TenantRepository extends Repository<Tenant, UUID> {
 
-	Optional<Tenant> findByAlias(String alias);
+	Optional<Tenant> findById(UUID id);
 
 }

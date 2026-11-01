@@ -119,7 +119,8 @@ Tests: `./mvnw verify` (backend tests start PostgreSQL through Testcontainers, s
 Each customer company is a tenant, which is one Keycloak organization. Tenant tables carry a `tenant_id` column; the
 Hibernate tenant filter and Postgres row-level security (RLS) both enforce it. The API connects as the Postgres role
 `app_runtime` (RLS applies to it), Flyway as the owner `app`. A user belongs to exactly one organization; the tenant
-comes only from the token's `organization` claim.
+is the organization **id** from the token's `tenant` claim (a mapper on the `zk-shell` client), and `iam` only confirms
+it is ACTIVE.
 
 Environment variables: `DB_RUNTIME_USER` / `DB_RUNTIME_PASSWORD` (the API; defaults are the dev password
 `app_runtime`, so production must set them) and `DB_USER` / `DB_PASSWORD` (used only by Flyway).
@@ -128,8 +129,8 @@ Environment variables: `DB_RUNTIME_USER` / `DB_RUNTIME_PASSWORD` (the API; defau
 
 1. Check the alias is unused: `select * from iam.tenant where alias = '<alias>';` (must return no row). Then Keycloak
    admin console, realm `zk-spring` -> Organizations -> Create (alias, name, domain), add members, give them realm
-   roles; copy the organization id.
-2. As `app`: `INSERT INTO iam.tenant (id, alias, name, status) VALUES ('<organization id>', '<alias>', '<name>', 'ACTIVE');`
+   roles; copy the organization **id** (shown on the organization's page; the tenant is this id, not the alias).
+2. As `app`, insert that id: `INSERT INTO iam.tenant (id, alias, name, status) VALUES ('<organization id>', '<alias>', '<name>', 'ACTIVE');`
 
 Until step 2, the organization's users log in but get no permissions. Changes reach the API within 60 seconds.
 
@@ -144,8 +145,9 @@ never enables it. Never create Keycloak organizations with those aliases.
 
 ### Offboard a customer
 
-Set the tenant SUSPENDED as above. Never delete the `iam.tenant` row and never reuse an alias for another company: the
-token carries only the alias, so a new organization with an old alias inherits that tenant's data.
+Set the tenant SUSPENDED as above. Never delete the `iam.tenant` row: its `alias` column is UNIQUE, so the old row keeps
+the alias. A Keycloak organization deleted and re-created under the same alias gets a new id and therefore no access
+until it is onboarded as a new tenant (with a new alias in `iam.tenant`).
 
 ### Upgrading an existing setup
 
@@ -157,9 +159,10 @@ token carries only the alias, so a new organization with an old alias inherits t
    docker compose exec postgres psql -U app -d app -c "CREATE ROLE app_runtime LOGIN PASSWORD 'app_runtime' NOSUPERUSER NOBYPASSRLS;"
    ```
 
-2. Re-import the Keycloak realm (it now has organizations): admin console -> realm `zk-spring` -> Realm settings ->
+2. Re-import the Keycloak realm (it now has organizations and the `tenant` mapper): admin console -> realm `zk-spring` -> Realm settings ->
    Action -> Delete; then `docker compose build keycloak; docker compose up -d keycloak`. The dev realm holds only demo
-   data; manual changes to it are lost.
+   data; manual changes to it are lost. Tokens issued before the re-import have no `tenant` claim and so no tenant:
+   users must log in again.
 3. `./mvnw install -DskipTests`, then start the backend with the dev profile so `demo`/`acme` exist (Flyway adds `iam.tenant` and moves existing tasks to `demo`).
 
 ## Add a feature module

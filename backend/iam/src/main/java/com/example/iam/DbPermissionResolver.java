@@ -37,7 +37,7 @@ public class DbPermissionResolver implements PermissionResolver {
 	@Override
 	public Set<String> permissionsFor(Jwt jwt) {
 		// Roles act inside the user's tenant only; without an active tenant they grant nothing.
-		boolean activeTenant = KeycloakTenant.alias(jwt).flatMap(tenants::tenantIdOf).isPresent();
+		boolean activeTenant = KeycloakTenant.activeTenant(jwt, tenants).isPresent();
 		return activeTenant ? permissionsForRoles(KeycloakRoles.of(jwt)) : Set.of();
 	}
 
