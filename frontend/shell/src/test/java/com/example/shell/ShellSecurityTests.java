@@ -31,7 +31,7 @@ class ShellSecurityTests {
 	}
 
 	@Test
-	void pagesRequireLogin()throws Exception {
+	void pagesRequireLogin() throws Exception {
 		mvc.perform(get("/"))
 				.andExpect(status().isFound())
 				.andExpect(redirectedUrl("/oauth2/authorization/keycloak"));
