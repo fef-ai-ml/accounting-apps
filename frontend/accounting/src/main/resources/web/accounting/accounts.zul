@@ -3,7 +3,7 @@
 	<style src="~./accounting/accounting.css"/>
 	<div viewModel="@id('vm') @init('com.example.ui.accounting.AccountsViewModel')" sclass="accounting">
 
-		<groupbox mold="3d" sclass="card" visible="@load(not vm.initialized)">
+		<groupbox mold="3d" sclass="card" visible="@load(not vm.initialized and not vm.loadFailed)">
 			<caption label="Accounting is not set up yet"/>
 			<label value="Start from the Indonesian chart of accounts template. You can edit your copy afterwards."/>
 			<separator/>
@@ -70,9 +70,9 @@
 					<listcell label="@load(row.account.postable ? 'Yes' : 'No')"/>
 					<listcell label="@load(row.account.active ? 'Yes' : 'No')"/>
 					<listcell>
-						<button label="Add child" visible="@load(not row.account.postable)" onClick="@command('addChild', account=row.account)"/>
-						<button label="Edit" onClick="@command('edit', account=row.account)"/>
-						<button label="@load(row.account.active ? 'Deactivate' : 'Activate')" onClick="@command('toggleActive', account=row.account)"/>
+						<button label="Add child" visible="@load(vm.canManage and not row.account.postable)" onClick="@command('addChild', account=row.account)"/>
+						<button label="Edit" visible="@load(vm.canManage)" onClick="@command('edit', account=row.account)"/>
+						<button label="@load(row.account.active ? 'Deactivate' : 'Activate')" visible="@load(vm.canManage)" onClick="@command('toggleActive', account=row.account)"/>
 					</listcell>
 				</listitem>
 			</template>

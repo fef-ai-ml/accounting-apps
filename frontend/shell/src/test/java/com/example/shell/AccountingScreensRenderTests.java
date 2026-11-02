@@ -73,6 +73,7 @@ class AccountingScreensRenderTests {
 	void commonData() {
 		when(currentUser.can(anyString())).thenReturn(true);
 		when(accountingApiClient.accounts()).thenReturn(List.of(HEADER, CASH));
+		when(accountingApiClient.settings()).thenReturn(new SettingsDto(true, true));
 	}
 
 	String render(String page) throws Exception {

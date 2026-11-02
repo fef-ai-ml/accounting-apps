@@ -2,6 +2,9 @@
 <zk>
 	<style src="~./accounting/accounting.css"/>
 	<div viewModel="@id('vm') @init('com.example.ui.accounting.JournalViewModel')" sclass="accounting">
+		<div sclass="card" visible="@load(not vm.initialized)">
+			<label value="@load(vm.setupText)" sclass="banner banner-off"/>
+		</div>
 		<hlayout sclass="filters card">
 			<datebox valueInLocalDate="@bind(vm.from)" format="yyyy-MM-dd" placeholder="From" width="120px"/>
 			<datebox valueInLocalDate="@bind(vm.to)" format="yyyy-MM-dd" placeholder="To" width="120px"/>
@@ -13,7 +16,7 @@
 			</combobox>
 			<textbox value="@bind(vm.q)" placeholder="Search text" onOK="@command('search')" width="180px"/>
 			<button label="Search" iconSclass="z-icon-search" onClick="@command('search')"/>
-			<button label="New entry" iconSclass="z-icon-plus" visible="@load(vm.canWrite)" onClick="@command('newEntry')"/>
+			<button label="New entry" iconSclass="z-icon-plus" visible="@load(vm.canWrite and vm.initialized)" onClick="@command('newEntry')"/>
 		</hlayout>
 
 		<listbox model="@load(vm.entries)" emptyMessage="No journal entries" sclass="card">

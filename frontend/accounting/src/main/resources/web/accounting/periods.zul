@@ -43,8 +43,8 @@
 					<listcell label="@load(period.status)"/>
 					<listcell label="@load(period.closedByName)"/>
 					<listcell>
-						<button label="Close" visible="@load(period.open)" onClick="@command('close', period=period)"/>
-						<button label="Reopen" visible="@load(not period.open)" onClick="@command('startReopen', period=period)"/>
+						<button label="Close" visible="@load(vm.canManage and period.open)" onClick="@command('close', period=period)"/>
+						<button label="Reopen" visible="@load(vm.canManage and not period.open)" onClick="@command('startReopen', period=period)"/>
 					</listcell>
 				</listitem>
 			</template>

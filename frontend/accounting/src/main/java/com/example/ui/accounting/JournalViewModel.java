@@ -48,6 +48,13 @@ public class JournalViewModel {
 
 	private boolean canWrite;
 
+	private boolean canManageAccounts;
+
+	/** True until the backend says otherwise: a failed load must not claim accounting is not set up. */
+	private boolean initialized = true;
+
+	private Long accountId;
+
 	private List<EntrySummaryDto> entries = List.of();
 
 	private List<AccountDto> accounts = List.of();
@@ -58,6 +65,8 @@ public class JournalViewModel {
 	public void init() {
 		try {
 			canWrite = currentUser.can("accounting:write");
+			canManageAccounts = currentUser.can("accounting:account-manage");
+			initialized = accountingApiClient.settings().initialized();
 			accounts = accountingApiClient.accounts();
 			accountModel = ListModels.toListSubModel(new ListModelList<Object>(accounts), new AccountMatcher(), ACCOUNT_CHOICES);
 		}
@@ -68,8 +77,18 @@ public class JournalViewModel {
 	}
 
 	@Command
-	@NotifyChange({ "entries", "total", "page" })
+	@NotifyChange({ "entries", "total", "page", "accountText" })
 	public void search() {
+		accountId = null;
+		if (accountText != null && !accountText.isBlank()) {
+			AccountDto account = AccountMatcher.find(accountText, accounts).orElse(null);
+			if (account == null) {
+				EntryViewModel.warnNoMatch(accountText);
+				return;
+			}
+			accountId = account.id();
+			accountText = account.getLabel();
+		}
 		page = 0;
 		load();
 	}
@@ -98,8 +117,6 @@ public class JournalViewModel {
 	}
 
 	private void load() {
-		Long accountId = accounts.stream().filter(account -> account.getLabel().equals(accountText)).map(AccountDto::id)
-				.findFirst().orElse(null);
 		try {
 			EntryPageDto result = accountingApiClient.entries(new EntryFilter(from, to, status, accountId, q, page, PAGE_SIZE));
 			if (result.items().isEmpty() && page > 0) {
@@ -179,6 +196,15 @@ public class JournalViewModel {
 
 	public boolean isCanWrite() {
 		return canWrite;
+	}
+
+	public boolean isInitialized() {
+		return initialized;
+	}
+
+	public String getSetupText() {
+		return "Accounting is not set up yet. "
+				+ (canManageAccounts ? "Open Accounts and choose Initialize from template." : "Ask your administrator to set it up.");
 	}
 
 	public List<EntrySummaryDto> getEntries() {

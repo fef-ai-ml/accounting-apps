@@ -28,6 +28,8 @@ public class AccountsViewModel {
 
 	private boolean initialized;
 
+	private boolean loadFailed;
+
 	private boolean requireSeparatePoster = true;
 
 	private boolean canManage;
@@ -49,8 +51,6 @@ public class AccountsViewModel {
 	private String type = "ASSET";
 
 	private boolean postable = true;
-
-	private boolean active = true;
 
 	@Init
 	public void init() {
@@ -98,7 +98,6 @@ public class AccountsViewModel {
 		name = "";
 		type = parent == null ? "ASSET" : parent.type();
 		postable = true;
-		active = true;
 	}
 
 	@Command
@@ -113,7 +112,6 @@ public class AccountsViewModel {
 		name = account.name();
 		type = account.type();
 		postable = account.postable();
-		active = account.active();
 	}
 
 	@Command
@@ -129,7 +127,8 @@ public class AccountsViewModel {
 			Clients.showNotification("Enter a code and a name", "warning", null, "middle_center", 3000);
 			return;
 		}
-		AccountRequest request = new AccountRequest(code.strip(), name.strip(), type, parentId, postable, active);
+		// No active: a new account starts active, and an update keeps the value, which the form may have outlived.
+		AccountRequest request = new AccountRequest(code.strip(), name.strip(), type, parentId, postable, null);
 		try {
 			if (editingId == null) {
 				accountingApiClient.createAccount(request);
@@ -152,6 +151,7 @@ public class AccountsViewModel {
 		try {
 			accountingApiClient.updateAccount(account.id(), new AccountRequest(account.code(), account.name(), account.type(),
 					account.parentId(), account.postable(), !account.active()));
+			editing = false;
 		}
 		catch (RuntimeException ex) {
 			ApiErrors.show(ex);
@@ -160,6 +160,7 @@ public class AccountsViewModel {
 	}
 
 	private void load() {
+		loadFailed = false;
 		try {
 			SettingsDto settings = accountingApiClient.settings();
 			initialized = settings.initialized();
@@ -167,6 +168,7 @@ public class AccountsViewModel {
 			rows = AccountTree.rows(accountingApiClient.accounts());
 		}
 		catch (RuntimeException ex) {
+			loadFailed = true;
 			rows = List.of();
 			ApiErrors.show(ex);
 		}
@@ -174,6 +176,10 @@ public class AccountsViewModel {
 
 	public boolean isInitialized() {
 		return initialized;
+	}
+
+	public boolean isLoadFailed() {
+		return loadFailed;
 	}
 
 	public boolean isRequireSeparatePoster() {

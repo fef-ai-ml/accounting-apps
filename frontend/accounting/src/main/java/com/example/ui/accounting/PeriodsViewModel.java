@@ -4,14 +4,17 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 
+import org.zkoss.bind.BindUtils;
 import org.zkoss.bind.annotation.BindingParam;
 import org.zkoss.bind.annotation.Command;
 import org.zkoss.bind.annotation.GlobalCommand;
 import org.zkoss.bind.annotation.Init;
 import org.zkoss.bind.annotation.NotifyChange;
+import org.zkoss.zk.ui.event.Event;
 import org.zkoss.zk.ui.select.annotation.VariableResolver;
 import org.zkoss.zk.ui.select.annotation.WireVariable;
 import org.zkoss.zk.ui.util.Clients;
+import org.zkoss.zul.Messagebox;
 
 import com.example.ui.common.ApiErrors;
 import com.example.ui.common.CurrentUser;
@@ -66,20 +69,27 @@ public class PeriodsViewModel {
 		fetch();
 	}
 
+	/** Asks first: the API offers no way to remove a year opened by mistake. */
 	@Command
-	@NotifyChange("*")
 	public void openYear() {
 		if (year == null) {
 			return;
 		}
-		try {
-			accountingApiClient.openYear(nextYear());
-			year = nextYear();
-		}
-		catch (RuntimeException ex) {
-			ApiErrors.show(ex);
-		}
-		load();
+		int target = nextYear();
+		Messagebox.show("Open the 12 months of " + target + "? A year cannot be removed.", "Open year", Messagebox.YES | Messagebox.NO,
+				Messagebox.QUESTION, (Event event) -> {
+					if (Messagebox.ON_YES.equals(event.getName())) {
+						try {
+							accountingApiClient.openYear(target);
+							year = target;
+						}
+						catch (RuntimeException ex) {
+							ApiErrors.show(ex);
+						}
+						load();
+						BindUtils.postNotifyChange(this, "*");
+					}
+				});
 	}
 
 	@Command
@@ -92,6 +102,10 @@ public class PeriodsViewModel {
 		catch (RuntimeException ex) {
 			if ("period-has-drafts".equals(ApiErrors.code(ex))) {
 				showBlockingDrafts(period);
+				// The list can come back empty, say when another user just dealt with them.
+				if (blockingDrafts.isEmpty()) {
+					ApiErrors.show(ex);
+				}
 				return;
 			}
 			ApiErrors.show(ex);
