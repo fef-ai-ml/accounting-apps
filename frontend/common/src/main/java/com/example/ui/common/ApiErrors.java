@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestClientResponseException;
+import org.zkoss.xml.XMLs;
 import org.zkoss.zk.ui.Executions;
 import org.zkoss.zk.ui.util.Clients;
 import tools.jackson.core.JacksonException;
@@ -52,16 +54,20 @@ public final class ApiErrors {
 		return problem(ex).path("code").asString("");
 	}
 
-	/** What to tell the user: the problem's {@code detail} when the API gave one. */
+	/** What to tell the user: the problem's {@code detail}, never the exception's message, which carries bodies and URLs. */
 	public static String message(RuntimeException ex) {
-		String detail = problem(ex).path("detail").asString("");
-		return detail.isBlank() ? "API error: " + ex.getMessage() : detail;
+		String detail = detail(ex);
+		return detail.isBlank() ? "The server could not complete the request." : detail;
+	}
+
+	private static String detail(RuntimeException ex) {
+		return problem(ex).path("detail").asString("");
 	}
 
 	private static JsonNode problem(RuntimeException ex) {
-		if (ex instanceof HttpClientErrorException clientError) {
+		if (ex instanceof RestClientResponseException response) {
 			try {
-				return JsonMapper.shared().readTree(clientError.getResponseBodyAsString());
+				return JsonMapper.shared().readTree(response.getResponseBodyAsString());
 			}
 			catch (JacksonException notJson) {
 				return MissingNode.getInstance();
@@ -75,8 +81,7 @@ public final class ApiErrors {
 		switch (classify(ex)) {
 			case FORBIDDEN -> {
 				log.info("API call forbidden: {}", ex.getMessage());
-				Clients.showNotification("You don't have permission to do that", "warning", null, "middle_center",
-						3000);
+				toast(detail(ex).isBlank() ? "You don't have permission to do that" : detail(ex), "warning", 3000);
 			}
 			case REAUTHENTICATE -> {
 				log.warn("API call unauthorized, sending the user to log in again (WWW-Authenticate: {})",
@@ -87,14 +92,19 @@ public final class ApiErrors {
 			case OTHER -> {
 				if (code(ex).isEmpty()) {
 					log.error("API call failed", ex);
-					Clients.showNotification(message(ex), "error", null, "middle_center", 4000);
+					toast(message(ex), "error", 4000);
 				}
 				else {
 					log.info("API refused the request: {}", ex.getMessage());
-					Clients.showNotification(message(ex), "warning", null, "middle_center", 5000);
+					toast(message(ex), "warning", 5000);
 				}
 			}
 		}
+	}
+
+	/** Notifications render HTML, and a backend detail can echo what a user typed. */
+	private static void toast(String text, String type, int duration) {
+		Clients.showNotification(XMLs.escapeXML(text), type, null, "middle_center", duration);
 	}
 
 }
