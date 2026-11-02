@@ -1,7 +1,7 @@
 # Accounting core (Phase 1): chart of accounts, journal, periods, trial balance, ledger
 
 Date: 2026-10-29
-Status: approved design, awaiting implementation plan
+Status: backend implemented on feat/accounting-core; frontend not started
 Depends on: `2026-10-29-multi-tenancy-foundation-design.md` (must be merged first)
 
 ## Goal
@@ -32,6 +32,23 @@ trial balance and general ledger.
 | Corrections | Reverse (new posted entry with swapped sides); optional "reverse & copy to draft" |
 | Chart of accounts | Copied per tenant from a global template at setup; tenants edit their own copy |
 | Reports | Computed live from posted lines; no stored balances in Phase 1 |
+
+### Settled by the backend plan
+
+- `settings` has a surrogate `id` plus `UNIQUE (tenant_id)` instead of `tenant_id` as primary key: `@TenantId` is not used on an `@Id` anywhere in this codebase. One row per tenant still holds.
+- `entry_sequence` is locked by an atomic `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, not a separate `SELECT ... FOR UPDATE`: the upsert holds the same row lock until commit and also creates the row on first use.
+- `GET /settings` before setup returns 200 with `initialized: false`, so the UI can show its empty state. Writes before setup return 422 `not-initialized`.
+- New error code `account-code-exists` (409) for a duplicate account code; the spec's table has no code for it.
+- Changing an account to non-postable while it has lines is `account-in-use`, and a parent with children cannot become postable (`validation`).
+- "Today" is `Asia/Jakarta`, through one `Clock` bean.
+- Closing an already closed period, or reopening an open one, returns the period unchanged and writes no audit row.
+- A line naming an unknown or another tenant's account is `account-not-postable` (422), so ids of other tenants stay indistinguishable from missing ones.
+
+Settled during implementation, beyond the plan's list:
+
+- Database guards are stricter than the first design: every non-draft entry must balance at commit, DRAFT -> REVERSED is refused, line writes take `FOR SHARE` on the parent entry and the account so they serialize with posting and deactivation, and `line_account` fires on any line insert or update.
+- The REST body field for the entry date is `date`.
+- A missing `copyToDraft` means false (the field is `Boolean`, since Jackson 3 refuses a missing primitive).
 
 ## Architecture
 

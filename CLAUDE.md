@@ -96,6 +96,13 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
 - Dev-only data lives in `db/demo/<module>` as repeatable migrations behind a property (`iam.demo-tenants`, set by the
   backend's `dev` profile); test-only migrations live in `db/test/<module>`, added with `spring.flyway.locations` in
   the test (a module without a customizer, like `tenancy`, keeps Boot's default for its test migration).
+- To replace an entry's lines, clear the collection and flush before adding the new ones: Hibernate inserts before it
+  deletes, which would trip `UNIQUE (tenant_id, entry_id, line_no)`.
+- `accounting` grants `app_runtime` per table, never with `ALTER DEFAULT PRIVILEGES`. Database triggers guard posted
+  entries (`V20261102_4__accounting_guards.sql`): a service that breaks a rule gets a 500 logged as an invariant bug,
+  so check every rule in the service first.
+- Jackson 3 refuses a missing primitive record component in a request body, so optional request fields must be boxed
+  (`Boolean`, not `boolean`).
 
 ## Testing
 
@@ -113,6 +120,8 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   real signed token through decoder, converter, `iam` resolver and `@PreAuthorize` (`TokenToPermissionsTests`).
 - Verified 2026-11-01 (`./mvnw verify`): tenant isolation as `app_runtime` through Hibernate and through RLS alone,
   tenants resolved from real signed tokens end to end, suspended/unknown/multiple organizations get no permissions.
+- Verified 2026-11-02 (`./mvnw verify`): accounting backend, including database guards bypassing the services, 20
+  parallel posts with gapless numbers, and the bookkeeper/accountant path with real signed tokens.
 - Verified 2026-10-28 by hand against Keycloak 26.8.1 on the home-lab (README "Manual end-to-end check" rows 1–6):
   login redirect, viewer/editor/admin permissions in the UI, logout back to the Keycloak login page, 401 + Bearer from
   the API.
