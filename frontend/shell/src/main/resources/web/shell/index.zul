@@ -12,9 +12,14 @@
 				</template>
 			</hlayout>
 			<div sclass="shell-user">
+				<label value="@load(vm.tenantName)" sclass="shell-tenant"/>
 				<label value="@load(vm.userName)"/>
 				<a href="/logout" label="Log out"/>
 			</div>
+		</div>
+
+		<div sclass="shell-no-access" visible="@load(vm.noAccess)">
+			<label value="Your organization has no access to this application. Contact your administrator."/>
 		</div>
 
 		<!-- Module in the same app: its ZUL page is included. -->

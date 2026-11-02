@@ -3,6 +3,7 @@ package com.example.security;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,7 @@ class KeycloakJwtAuthenticationConverterTests {
 		var converter = new KeycloakJwtAuthenticationConverter(token -> {
 			seen.set(token);
 			return Set.of("task:write", "task:read");
-		});
+		}, TenantDirectory.none());
 		Jwt token = jwt(Map.of("preferred_username", "editor"));
 
 		AbstractAuthenticationToken authentication = converter.convert(token);
@@ -52,20 +53,43 @@ class KeycloakJwtAuthenticationConverterTests {
 
 	@Test
 	void nameFallsBackToSubject() {
-		var converter = new KeycloakJwtAuthenticationConverter(token -> Set.of());
+		var converter = new KeycloakJwtAuthenticationConverter(token -> Set.of(), TenantDirectory.none());
 
 		assertThat(converter.convert(jwt(Map.of("scope", "openid"))).getName()).isEqualTo("sub-123");
 	}
 
 	@Test
 	void denyAllGrantsNothing() {
-		var converter = new KeycloakJwtAuthenticationConverter(PermissionResolver.denyAll());
+		var converter = new KeycloakJwtAuthenticationConverter(PermissionResolver.denyAll(), TenantDirectory.none());
 
 		AbstractAuthenticationToken authentication =
 				converter.convert(jwt(Map.of("realm_access", Map.of("roles", List.of("ADMIN")))));
 
 		assertThat(authentication.getAuthorities()).isEmpty();
 		assertThat(authentication.isAuthenticated()).isTrue();
+	}
+
+	@Test
+	void carriesTheTenantOfTheTokensOrganization() {
+		UUID demo = UUID.fromString("7f3a0c4e-1b2d-4e5f-8a9b-0c1d2e3f4a5b");
+		KeycloakJwtAuthenticationConverter converter =
+				new KeycloakJwtAuthenticationConverter(PermissionResolver.denyAll(), demo::equals);
+		Jwt jwt = Jwt.withTokenValue("t").header("alg", "none").subject("sub-1")
+				.claim("tenant", Map.of("demo", Map.of("id", demo.toString()))).build();
+
+		KeycloakAuthentication authentication = (KeycloakAuthentication) converter.convert(jwt);
+
+		assertThat(authentication.getTenantId()).contains(demo);
+	}
+
+	@Test
+	void inactiveOrUnknownOrganizationHasNoTenant() {
+		KeycloakJwtAuthenticationConverter converter =
+				new KeycloakJwtAuthenticationConverter(PermissionResolver.denyAll(), TenantDirectory.none());
+		Jwt jwt = Jwt.withTokenValue("t").header("alg", "none").subject("sub-1")
+				.claim("tenant", Map.of("demo", Map.of("id", "7f3a0c4e-1b2d-4e5f-8a9b-0c1d2e3f4a5b"))).build();
+
+		assertThat(((KeycloakAuthentication) converter.convert(jwt)).getTenantId()).isEmpty();
 	}
 
 }

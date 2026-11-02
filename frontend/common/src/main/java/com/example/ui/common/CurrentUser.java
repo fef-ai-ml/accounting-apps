@@ -35,6 +35,15 @@ public class CurrentUser {
 		return permission == null || me().permissions().contains(permission);
 	}
 
+	/** Whether the user belongs to a tenant that may use the application. */
+	public boolean hasActiveTenant() {
+		return me().tenant() != null && me().tenant().active();
+	}
+
+	public String getTenantName() {
+		return me().tenant() == null ? "" : me().tenant().name();
+	}
+
 	public String getName() {
 		return me().name();
 	}

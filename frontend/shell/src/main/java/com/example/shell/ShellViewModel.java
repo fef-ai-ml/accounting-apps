@@ -29,15 +29,21 @@ public class ShellViewModel {
 
 	private String userName = "";
 
+	private boolean noAccess;
+
+	private String tenantName = "";
+
 	private UiModule current;
 
 	@Init
 	public void init() {
 		try {
-			modules = moduleRegistry.modules().stream()
+			userName = currentUser.getName();
+			tenantName = currentUser.getTenantName();
+			noAccess = !currentUser.hasActiveTenant();
+			modules = noAccess ? List.of() : moduleRegistry.modules().stream()
 					.filter(module -> currentUser.can(module.requiredPermission()))
 					.toList();
-			userName = currentUser.getName();
 		}
 		catch (RuntimeException ex) {
 			// Backend unreachable or login gone: render an empty shell and tell the user.
@@ -54,6 +60,14 @@ public class ShellViewModel {
 
 	public List<UiModule> getModules() {
 		return modules;
+	}
+
+	public boolean isNoAccess() {
+		return noAccess;
+	}
+
+	public String getTenantName() {
+		return tenantName;
 	}
 
 	public String getUserName() {

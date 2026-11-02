@@ -1,8 +1,10 @@
 package com.example.iam;
 
 import java.util.Arrays;
+import java.util.stream.Stream;
 
 import org.flywaydb.core.api.Location;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.flyway.autoconfigure.FlywayConfigurationCustomizer;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Bean;
@@ -28,13 +30,13 @@ import com.example.security.SecurityModule;
 public class IamModule {
 
 	@Bean
-	FlywayConfigurationCustomizer iamMigrations() {
-		return configuration -> {
-			Location[] current = configuration.getLocations();
-			Location[] all = Arrays.copyOf(current, current.length + 1);
-			all[current.length] = new Location("classpath:db/migration/iam");
-			configuration.locations(all);
-		};
+	FlywayConfigurationCustomizer iamMigrations(@Value("${iam.demo-tenants:false}") boolean demoTenants) {
+		// Boot's default db/migration scans recursively, so Flyway would discard this folder and run every module's.
+		return configuration -> configuration.locations(Stream.concat(
+				Arrays.stream(configuration.getLocations()).filter(l -> !l.getDescriptor().equals("classpath:db/migration")),
+				Stream.concat(Stream.of(new Location("classpath:db/migration/iam")),
+						demoTenants ? Stream.of(new Location("classpath:db/demo/iam")) : Stream.empty()))
+				.toArray(Location[]::new));
 	}
 
 }
