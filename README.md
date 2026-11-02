@@ -118,16 +118,20 @@ Use a private browser window per user, at `http://localhost:8081`:
 | 20 | Click **Reverse** on the posted entry | Asks for confirmation before posting the reversal |
 | 21 | As `accountant`, create and save your own balanced draft | Post is disabled with "You prepared this entry; another user must post it" |
 | 22 | As `admin`, switch the setting off in **Accounts**; as `accountant`, reopen that draft | Post is enabled and works; switch the setting back on afterwards |
-| 23 | Open a draft in two browser windows as `accountant`; save a change in one, click Save in the other | "Someone else changed this entry. Reload?"; Yes shows the other window's change |
+| 23 | Open a draft in two browser windows as `accountant`; save a change in one, click **Save draft** in the other | "Someone else changed this entry. Reload?"; Yes shows the other window's change |
 | 24 | In one window delete a draft; in the other, open its row from the list | An error message and no blank form |
 | 25 | Change a saved draft without saving, click **Post** | Refused: "Save the draft first" |
-| 26 | In **Periods**, click **Close** on a month holding a draft | The draft is listed; opening it from the list works; closing succeeds once it is posted or deleted |
+| 26 | As `accountant`, in **Periods**, click **Close** on a month holding a draft | The draft is listed; opening it from the list works; closing succeeds once it is posted or deleted |
 | 27 | **Reopen** a closed month | Asks for a reason; refused when empty |
 | 28 | **Reports**: run the trial balance, export CSV, open it in a spreadsheet | Difference 0,00 on screen; columns and non-ASCII names correct in the spreadsheet |
 | 29 | Run the general ledger for an account with activity | Opening balance, running balance, closing balance |
 | 30 | Log in as `acme-admin` | No `demo` accounting data on any of the four screens |
 | 31 | Open Journal, Accounts, Periods and Reports inside the shell | Each shows its styling (banner colours, cards); the CSS loads in the shell, not only in the module's own app |
-| 32 | As a user without `accounting:account-manage`, open **Accounts** | No row buttons (Add child, Edit, Deactivate) |
+| 32 | As `bookkeeper` (no `accounting:account-manage`), open **Accounts** | No row buttons (Add child, Edit, Deactivate) and no **Add top-level account**; Tab cannot reach them |
+| 33 | As `bookkeeper`, key a whole entry with the keyboard only: Tab from the date through description and each line's account (type part of a code or name), memo and amount, then to **Save draft** and press Enter | Focus stays in the row being keyed, Balance and the remove button are no Tab stops, each account filled in on the last line adds a blank line, and the entry saves |
+| 34 | In a saved draft change a debit to `-5`, leave the field, then click **Save draft** | The error bubble stays and nothing is saved; **Save draft** comes back once the amount is corrected |
+| 35 | Open **New entry**, type something, and leave it idle past the session timeout; then try to leave the page, and separately to save | The work is lost, by decision (no keep-alive: an idle session must still expire). The browser warns before leaving; Save says "Your login has expired. This entry was not saved." where the login, not only the ZK session, is what failed |
+| 36 | Open a report's CSV in Excel with Indonesian regional settings | Not run yet, reasoned only: a comma-separated file with dot decimals may open in one column there; check whether Data > From Text is needed |
 
 If you are sent back to the login page after every login, the shell log shows `API call unauthorized` with the
 backend's `WWW-Authenticate` reason (usually an issuer mismatch, see above).

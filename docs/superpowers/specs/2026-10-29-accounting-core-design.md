@@ -60,15 +60,20 @@ Settled during implementation, beyond the plan's list:
 - Posting needs a saved draft: Post is refused on screen while the form has unsaved changes, because the backend posts the saved version.
 - The entry form is a modal window, not a page in the shell, so Periods can open it for a blocking draft and `ShellViewModel` stays unchanged.
 - The accounts tree is an indented list, not a ZK `<tree>`.
-- The account combobox binds its text and handles selection through a command rather than `selectedItem`, because a filtered model need not contain the selected account. Text matching no account leaves the line without one, and Save refuses it.
-- CSV cells starting with `=`, `+`, `-`, `@`, tab or carriage return are prefixed with `'` when they are text. Amounts stay numeric, with a dot. Files start with a UTF-8 BOM so Excel reads them correctly.
+- The account combobox binds its text and handles selection through a command rather than `selectedItem`, because a filtered model need not contain the selected account.
+- Account text means the exact label, else the one account a contains-search finds. Anything else warns `No single account matches "<text>"`; on an entry line it leaves the line without an account (never the old one) and Save refuses it, and the journal does not search. A pick on the last line appends a blank line, the keyboard's way into new rows.
+- CSV text cells whose first visible character is `=`, `+`, `-`, `@` or a full-width form of them, or that start with tab or carriage return, are prefixed with `'`. Cells holding `;` or a tab are quoted too, for Excel's `;` list separator. Amounts stay numeric, with a dot. Files start with a UTF-8 BOM so Excel reads them correctly.
+- Reports name what they show from the response, never the inputs: a heading on screen, and a first CSV row (`Trial balance as of,<date>`, `General ledger,<code> <name>,<from>,<to>`) before the header row.
 - There is no delete button on accounts; deactivating covers it.
-- `ApiErrors` shows the problem `detail` for every 4xx that has one, not only 409 and 422.
+- `ApiErrors` shows the problem `detail` of any error response that has one, 403 and 5xx included, so `separate-poster-required` reads "You prepared this entry; another user must post it". Otherwise it shows "The server could not complete the request." It never shows an exception's message, which carries response bodies and internal URLs. Notification text is escaped.
+- Saves are refused on screen with `Line n: amounts have at most 2 decimals`, since the form shows two and would otherwise call `100,004` balanced.
+- Unsaved work: a dirty form asks "Discard unsaved changes?" on close, and the browser warns on leaving while the form is open. When a token refresh fails on Save, Post or Reverse the form says "Your login has expired. This entry was not saved." before logging out. There is no keep-alive: an idle session must still expire, so a form left past the timeout is lost.
+- Before setup the journal says so, worded by permission, and hides New entry. A failed load never shows the "not set up" panel.
 - Each entry line has its own account list (a shared model would show one pick on every row).
 - A failed load closes the entry window.
 - `version-conflict`, `not-draft` and `already-reversed` all offer Reload.
-- Reverse asks for confirmation.
-- A blank year cannot open a year.
+- Reverse asks for confirmation, stating the date (default today) and any draft it will create.
+- A blank year cannot open a year, and opening one asks first, since the API offers no way to remove it.
 
 ## Architecture
 

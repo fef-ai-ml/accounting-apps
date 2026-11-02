@@ -103,7 +103,6 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   so check every rule in the service first.
 - Jackson 3 refuses a missing primitive record component in a request body, so optional request fields must be boxed
   (`Boolean`, not `boolean`).
-
 - In ZK forms, bind an amount with `@load` plus `onChange="@command('setDebit', line=line, amount=self.value)"` rather
   than `@bind` plus a second command: the order of a prompt save and a command on the same event is not something to
   rely on.
@@ -112,6 +111,8 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   pick shows on every row. Give each row its own with `@init` (see `EntryViewModel.getNewAccountModel`).
 - An included page's `<?link?>` header never runs: load a module's CSS with `<style src="~./module/x.css"/>` inside the
   root. (`frontend/task/.../main.zul` still has the old pattern; left as is.)
+- A ZK command must notify only what it changed: `@NotifyChange("*")` reloads a grid's model, which rebuilds its rows and
+  drops keyboard focus to the page. See `EntryViewModel`: amounts notify the totals and their own line.
 
 ## Testing
 
@@ -121,7 +122,10 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
 - Frontend tests are context-load plus unit tests of plain classes. `AccountingScreensRenderTests` also renders ZUL
   pages through ZK's real servlets on a random port, with the REST client mocked: a wrong binding redirects instead of
   answering 200. Copy it for new screens; MockMvc does not run ZK's servlets. It passes on hidden components too (ZK
-  sends them in its JSON) and does not click, so command paths still need a person.
+  sends them in its JSON) and does not click.
+- `AccountingClickPathTests` clicks: `ZkDriver` sends real AU requests to the test server, so it pins commands, which row
+  a change reached, and what is `visible`. It needs no Docker. It cannot see focus or client-side validation (a
+  constraint's error bubble, `w:onClick`), because no browser runs: those are README checklist rows 33 and 34.
 - To exercise the UI without a database, run any stub on :8080 returning
   `[{"id":1,"title":"x","description":"","done":false,"createdAt":"2026-01-01T00:00:00Z"}]` for `GET /api/tasks`.
 - Backend tests authenticate with `SecurityMockMvcRequestPostProcessors.jwt().authorities(...)` and a dummy
