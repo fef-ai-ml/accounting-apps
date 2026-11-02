@@ -24,11 +24,13 @@ import com.example.ui.accounting.AccountDto;
 import com.example.ui.accounting.AccountingApiClient;
 import com.example.ui.accounting.EntryPageDto;
 import com.example.ui.accounting.EntrySummaryDto;
+import com.example.ui.accounting.PeriodDto;
 import com.example.ui.accounting.SettingsDto;
 import com.example.ui.common.CurrentUser;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
@@ -106,6 +108,14 @@ class AccountingScreensRenderTests {
 		when(accountingApiClient.settings()).thenReturn(new SettingsDto(true, true));
 
 		assertThat(render("accounts.zul")).contains("Kas Kecil", "Aset Lancar", "Require a different user to post entries");
+	}
+
+	@Test
+	void periodsRender() throws Exception {
+		when(accountingApiClient.periods(anyInt())).thenReturn(List.of(new PeriodDto(3L, 2026, 3, LocalDate.of(2026, 3, 1),
+				LocalDate.of(2026, 3, 31), "CLOSED", "Ani Accountant")));
+
+		assertThat(render("periods.zul")).contains("Mar 2026", "CLOSED", "Ani Accountant", "Reopen");
 	}
 
 }
