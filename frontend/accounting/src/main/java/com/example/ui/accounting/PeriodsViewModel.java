@@ -69,6 +69,9 @@ public class PeriodsViewModel {
 	@Command
 	@NotifyChange("*")
 	public void openYear() {
+		if (year == null) {
+			return;
+		}
 		try {
 			accountingApiClient.openYear(nextYear());
 			year = nextYear();

@@ -5,7 +5,7 @@
 		<hlayout sclass="filters card" valign="middle">
 			<label value="Year"/>
 			<intbox value="@load(vm.year)" width="80px" onChange="@command('changeYear', year=self.value)"/>
-			<button label="@load(vm.openYearLabel)" visible="@load(vm.canManage)" onClick="@command('openYear')"/>
+			<button label="@load(vm.openYearLabel)" visible="@load(vm.canManage and vm.year ne null)" onClick="@command('openYear')"/>
 		</hlayout>
 
 		<groupbox mold="3d" sclass="card" visible="@load(not empty vm.blockingDrafts)">
