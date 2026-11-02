@@ -11,7 +11,9 @@ class GlobalExceptionHandler {
 
 	@ExceptionHandler(ResourceNotFoundException.class)
 	ProblemDetail notFound(ResourceNotFoundException ex) {
-		return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+		problem.setProperty("code", "not-found");
+		return problem;
 	}
 
 }

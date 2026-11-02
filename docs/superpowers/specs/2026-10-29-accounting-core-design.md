@@ -1,7 +1,7 @@
 # Accounting core (Phase 1): chart of accounts, journal, periods, trial balance, ledger
 
 Date: 2026-10-29
-Status: approved design, awaiting implementation plan
+Status: backend implemented on feat/accounting-core; frontend not started
 Depends on: `2026-10-29-multi-tenancy-foundation-design.md` (must be merged first)
 
 ## Goal
@@ -32,6 +32,27 @@ trial balance and general ledger.
 | Corrections | Reverse (new posted entry with swapped sides); optional "reverse & copy to draft" |
 | Chart of accounts | Copied per tenant from a global template at setup; tenants edit their own copy |
 | Reports | Computed live from posted lines; no stored balances in Phase 1 |
+
+### Settled by the backend plan
+
+- `settings` has a surrogate `id` plus `UNIQUE (tenant_id)` instead of `tenant_id` as primary key: `@TenantId` is not used on an `@Id` anywhere in this codebase. One row per tenant still holds.
+- `entry_sequence` is locked by an atomic `INSERT ... ON CONFLICT DO UPDATE ... RETURNING`, not a separate `SELECT ... FOR UPDATE`: the upsert holds the same row lock until commit and also creates the row on first use.
+- `GET /settings` before setup returns 200 with `initialized: false`, so the UI can show its empty state. Writes before setup return 422 `not-initialized`.
+- New error code `account-code-exists` (409) for a duplicate account code; the spec's table has no code for it.
+- Changing an account to non-postable while it has lines is `account-in-use`, and a parent with children cannot become postable (`validation`).
+- "Today" is `Asia/Jakarta`, through one `Clock` bean.
+- Closing an already closed period, or reopening an open one, returns the period unchanged and writes no audit row.
+- A line naming an unknown or another tenant's account is `account-not-postable` (422), so ids of other tenants stay indistinguishable from missing ones.
+
+Settled during implementation, beyond the plan's list:
+
+- Database guards are stricter than the first design: every non-draft entry must balance at commit, DRAFT -> REVERSED is refused, line writes take `FOR SHARE` on the parent entry and the account so they serialize with posting and deactivation, and `line_account` fires on any line insert or update.
+- The REST body field for the entry date is `date`.
+- A missing `copyToDraft` means false (the field is `Boolean`, since Jackson 3 refuses a missing primitive).
+- Post and draft delete require `version`; a stale one is 409 `version-conflict`. The POST audit row records `totalDebit` and `version`.
+- A reversal cannot be dated before its original (400 `validation`).
+- New codes: 409 `conflict` (unique violation, SQLSTATE 23505), 500 `database-error`; `invariant-violated` is the 500 code for trigger/CHECK rejections (P0001, 23514). Data exceptions (class 22) are 400 `validation`.
+- A `PUT` of an account without `active` keeps the current value; only create defaults it to true.
 
 ## Architecture
 
@@ -191,8 +212,8 @@ side. `1290 Akumulasi Penyusutan` is a contra-asset with a credit balance; Phase
 | `GET /journal-entries/{id}` | `read` | Entry with lines |
 | `POST /journal-entries` | `write` | Creates a draft |
 | `PUT /journal-entries/{id}` | `write` | Draft only; body carries `version`; replaces all lines |
-| `DELETE /journal-entries/{id}` | `write` | Draft only |
-| `POST /journal-entries/{id}/post` | `post` | See posting rules |
+| `DELETE /journal-entries/{id}?version=` | `write` | Draft only; `version` required |
+| `POST /journal-entries/{id}/post?version=` | `post` | `version` required (the one reviewed); see posting rules |
 | `POST /journal-entries/{id}/reverse` | `post` | Body `{date, copyToDraft}`; returns the reversal (and the new draft id) |
 | `GET /reports/trial-balance?asOf=` | `read` | Per account: debit total, credit total, balance on its normal side; totals |
 | `GET /reports/general-ledger?accountId&from&to` | `read` | Opening balance, lines with running balance, closing balance |
@@ -254,9 +275,9 @@ Every failure is an RFC 9457 `ProblemDetail` with a stable `code` property:
 | 400 | `invalid-line`, `too-many-lines`, `invalid-amount`, `validation` |
 | 403 | `forbidden`, `separate-poster-required` |
 | 404 | `not-found` (also for another tenant's ids) |
-| 409 | `version-conflict`, `not-draft`, `already-reversed`, `already-initialized`, `period-has-drafts`, `periods-exist`, `account-in-use` |
+| 409 | `conflict`, `version-conflict`, `not-draft`, `already-reversed`, `already-initialized`, `period-has-drafts`, `periods-exist`, `account-in-use` |
 | 422 | `unbalanced`, `too-few-lines`, `period-closed`, `no-period`, `account-not-postable`, `not-initialized` |
-| 500 | A database guard rejected what the service allowed; logged as an invariant bug |
+| 500 | `invariant-violated` (a trigger or CHECK rejected what the service allowed; logged as a bug), `database-error` (any other database failure) |
 
 ## Testing
 

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.jayway.jsonpath.JsonPath;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
@@ -229,6 +230,56 @@ class TokenToPermissionsTests {
 
 		mvc.perform(get("/api/tasks").header(HttpHeaders.AUTHORIZATION, tampered))
 				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void bookkeeperDraftsAccountantPostsAndTenantsStaySeparate() throws Exception {
+		int year = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Jakarta")).getYear();
+		String demoAdmin = bearer("admin", "ADMIN");
+		String bookkeeper = bearer("bookkeeper", "BOOKKEEPER");
+		String accountant = bearer("accountant", "ACCOUNTANT");
+		String viewer = bearer("viewer", "VIEWER");
+		String acmeAdmin = bearerIn(Map.of("acme", ACME), "acme-admin", "ADMIN");
+
+		mvc.perform(post("/api/accounting/setup").header(HttpHeaders.AUTHORIZATION, accountant)).andExpect(status().isForbidden());
+		mvc.perform(post("/api/accounting/setup").header(HttpHeaders.AUTHORIZATION, demoAdmin)).andExpect(status().isOk());
+
+		String accounts = mvc.perform(get("/api/accounting/accounts").header(HttpHeaders.AUTHORIZATION, viewer))
+				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		long cash = ((List<Number>) JsonPath.read(accounts, "$[?(@.code=='1110')].id")).get(0).longValue();
+		long sales = ((List<Number>) JsonPath.read(accounts, "$[?(@.code=='4100')].id")).get(0).longValue();
+
+		String draft = "{\"date\": \"%d-03-15\", \"description\": \"Sale\", \"lines\": [{\"accountId\": %d, \"debit\": \"100.00\"}, {\"accountId\": %d, \"credit\": \"100.00\"}]}"
+				.formatted(year, cash, sales);
+		mvc.perform(post("/api/accounting/journal-entries").header(HttpHeaders.AUTHORIZATION, viewer)
+				.contentType(MediaType.APPLICATION_JSON).content(draft)).andExpect(status().isForbidden());
+		String created = mvc.perform(post("/api/accounting/journal-entries").header(HttpHeaders.AUTHORIZATION, bookkeeper)
+						.contentType(MediaType.APPLICATION_JSON).content(draft))
+				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+		long entry = ((Number) JsonPath.read(created, "$.id")).longValue();
+		String postPath = "/api/accounting/journal-entries/" + entry + "/post?version=0";
+
+		mvc.perform(post(postPath).header(HttpHeaders.AUTHORIZATION, bookkeeper)).andExpect(status().isForbidden());
+		mvc.perform(post(postPath).header(HttpHeaders.AUTHORIZATION, accountant))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.entryNo").value("JE-" + year + "-000001"))
+				.andExpect(jsonPath("$.postedByName").value("accountant"));
+
+		mvc.perform(get("/api/accounting/journal-entries/" + entry).header(HttpHeaders.AUTHORIZATION, acmeAdmin))
+				.andExpect(status().isNotFound());
+		mvc.perform(get("/api/accounting/reports/trial-balance").header(HttpHeaders.AUTHORIZATION, acmeAdmin))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.rows").isEmpty());
+		mvc.perform(get("/api/accounting/reports/trial-balance").param("asOf", year + "-12-31").header(HttpHeaders.AUTHORIZATION, viewer))
+				.andExpect(jsonPath("$.totalDebit").value("100.00"))
+				.andExpect(jsonPath("$.difference").value("0.00"));
+
+		mvc.perform(post("/api/accounting/setup").header(HttpHeaders.AUTHORIZATION, acmeAdmin)).andExpect(status().isOk());
+		String acmeAccounts = mvc.perform(get("/api/accounting/accounts").header(HttpHeaders.AUTHORIZATION, acmeAdmin))
+				.andReturn().getResponse().getContentAsString();
+		long acmeCash = ((List<Number>) JsonPath.read(acmeAccounts, "$[?(@.code=='1110')].id")).get(0).longValue();
+		org.assertj.core.api.Assertions.assertThat(acmeCash).isNotEqualTo(cash);
 	}
 
 }

@@ -18,6 +18,7 @@
 		<module>tenancy</module>
 		<module>iam</module>
 		<module>task</module>
+		<module>accounting</module>
 		<module>app</module>
 	</modules>
 </project>

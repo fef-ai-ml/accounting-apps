@@ -65,23 +65,32 @@ class IamApiTests {
 
 	@Test
 	void seededRolesHaveTheirPermissions() {
-		assertThat(resolver.permissionsForRoles(Set.of("VIEWER"))).containsExactly("task:read");
+		assertThat(resolver.permissionsForRoles(Set.of("VIEWER"))).containsExactlyInAnyOrder("task:read", "accounting:read");
 		assertThat(resolver.permissionsForRoles(Set.of("EDITOR"))).containsExactlyInAnyOrder("task:read", "task:write");
-		assertThat(resolver.permissionsForRoles(Set.of("ADMIN")))
-				.containsExactlyInAnyOrder("task:read", "task:write", "task:delete", "iam:read");
+		assertThat(resolver.permissionsForRoles(Set.of("ADMIN"))).containsExactlyInAnyOrder("task:read", "task:write",
+				"task:delete", "iam:read", "accounting:read", "accounting:write", "accounting:post",
+				"accounting:period-manage", "accounting:account-manage");
 	}
 
 	@Test
 	void severalRolesAreUnioned() {
 		assertThat(resolver.permissionsForRoles(Set.of("VIEWER", "EDITOR")))
-				.containsExactlyInAnyOrder("task:read", "task:write");
+				.containsExactlyInAnyOrder("task:read", "task:write", "accounting:read");
+	}
+
+	@Test
+	void accountingRolesHaveTheirPermissions() {
+		assertThat(resolver.permissionsForRoles(Set.of("BOOKKEEPER")))
+				.containsExactlyInAnyOrder("accounting:read", "accounting:write");
+		assertThat(resolver.permissionsForRoles(Set.of("ACCOUNTANT"))).containsExactlyInAnyOrder("accounting:read",
+				"accounting:write", "accounting:post", "accounting:period-manage");
 	}
 
 	@Test
 	void builtInAndUnknownRolesAreIgnored() {
 		Set<String> keycloakBuiltIns = Set.of("default-roles-zk-spring", "offline_access", "uma_authorization");
 		assertThat(resolver.permissionsForRoles(keycloakBuiltIns)).isEmpty();
-		assertThat(resolver.permissionsForRoles(Set.of("default-roles-zk-spring", "VIEWER"))).containsExactly("task:read");
+		assertThat(resolver.permissionsForRoles(Set.of("default-roles-zk-spring", "VIEWER"))).containsExactlyInAnyOrder("task:read", "accounting:read");
 		assertThat(resolver.permissionsForRoles(Set.of("editor"))).as("role names are case-sensitive").isEmpty();
 	}
 
@@ -195,10 +204,14 @@ class IamApiTests {
 
 		mvc.perform(get("/api/iam/roles").with(jwt().authorities(new SimpleGrantedAuthority("iam:read"))))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[0].role").value("ADMIN"))
-				.andExpect(jsonPath("$[0].permissions", contains("iam:read", "task:delete", "task:read", "task:write")))
-				.andExpect(jsonPath("$[1].role").value("EDITOR"))
-				.andExpect(jsonPath("$[2].role").value("VIEWER"));
+				.andExpect(jsonPath("$[0].role").value("ACCOUNTANT"))
+				.andExpect(jsonPath("$[1].role").value("ADMIN"))
+				.andExpect(jsonPath("$[1].permissions", contains("accounting:account-manage", "accounting:period-manage",
+						"accounting:post", "accounting:read", "accounting:write", "iam:read", "task:delete", "task:read",
+						"task:write")))
+				.andExpect(jsonPath("$[2].role").value("BOOKKEEPER"))
+				.andExpect(jsonPath("$[3].role").value("EDITOR"))
+				.andExpect(jsonPath("$[4].role").value("VIEWER"));
 	}
 
 }

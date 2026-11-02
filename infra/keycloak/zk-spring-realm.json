@@ -6,7 +6,9 @@
     "realm": [
       { "name": "ADMIN", "description": "Everything, including viewing role mappings" },
       { "name": "EDITOR", "description": "Read and change data" },
-      { "name": "VIEWER", "description": "Read-only" }
+      { "name": "VIEWER", "description": "Read-only" },
+      { "name": "BOOKKEEPER", "description": "Accounting: read and prepare draft entries" },
+      { "name": "ACCOUNTANT", "description": "Accounting: post and reverse entries, manage periods" }
     ]
   },
   "clients": [
@@ -87,6 +89,26 @@
       "lastName": "Acme",
       "credentials": [{ "type": "password", "value": "acme-admin", "temporary": false }],
       "realmRoles": ["ADMIN", "default-roles-zk-spring"]
+    },
+    {
+      "username": "bookkeeper",
+      "enabled": true,
+      "email": "bookkeeper@example.com",
+      "emailVerified": true,
+      "firstName": "Budi",
+      "lastName": "Bookkeeper",
+      "credentials": [{ "type": "password", "value": "bookkeeper", "temporary": false }],
+      "realmRoles": ["BOOKKEEPER", "default-roles-zk-spring"]
+    },
+    {
+      "username": "accountant",
+      "enabled": true,
+      "email": "accountant@example.com",
+      "emailVerified": true,
+      "firstName": "Ani",
+      "lastName": "Accountant",
+      "credentials": [{ "type": "password", "value": "accountant", "temporary": false }],
+      "realmRoles": ["ACCOUNTANT", "default-roles-zk-spring"]
     }
   ],
   "organizations": [
@@ -96,7 +118,7 @@
       "alias": "demo",
       "enabled": true,
       "domains": [{ "name": "example.com" }],
-      "members": [{ "username": "admin" }, { "username": "editor" }, { "username": "viewer" }]
+      "members": [{ "username": "admin" }, { "username": "editor" }, { "username": "viewer" }, { "username": "bookkeeper" }, { "username": "accountant" }]
     },
     {
       "id": "b2c4e6a8-0d1f-4a3b-9c5d-7e8f9a0b1c2d",

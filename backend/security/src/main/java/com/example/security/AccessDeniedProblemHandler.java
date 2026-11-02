@@ -12,8 +12,10 @@ class AccessDeniedProblemHandler {
 
 	@ExceptionHandler(AccessDeniedException.class)
 	ProblemDetail accessDenied(AccessDeniedException ex) {
-		return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN,
+		ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN,
 				"You do not have permission to perform this action");
+		problem.setProperty("code", "forbidden");
+		return problem;
 	}
 
 }

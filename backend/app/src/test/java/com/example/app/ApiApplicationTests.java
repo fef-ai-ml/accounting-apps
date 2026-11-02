@@ -47,6 +47,7 @@ class ApiApplicationTests {
 	void apiNeedsAToken() throws Exception {
 		mvc.perform(get("/api/tasks")).andExpect(status().isUnauthorized());
 		mvc.perform(get("/api/iam/me")).andExpect(status().isUnauthorized());
+		mvc.perform(get("/api/accounting/accounts")).andExpect(status().isUnauthorized());
 	}
 
 	@Test

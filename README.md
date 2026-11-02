@@ -47,6 +47,8 @@ Demo users (dev only, password = username):
 | `admin` | `ADMIN` (everything) | `demo` |
 | `editor` | `EDITOR` (read + write) | `demo` |
 | `viewer` | `VIEWER` (read) | `demo` |
+| `bookkeeper` | `BOOKKEEPER` (read + drafts) | `demo` |
+| `accountant` | `ACCOUNTANT` (read, drafts, post, periods) | `demo` |
 | `acme-admin` | `ADMIN` | `acme` |
 
 Keycloak admin console: `http://localhost:8180`, `admin`/`admin`.
@@ -167,6 +169,33 @@ until it is onboarded as a new tenant under an unused alias (onboarding step 1).
    `iam.tenant` and moves existing tasks to `demo`). If a build of this branch from before 2026-11-01 already migrated
    the database, Flyway reports a checksum mismatch for `V20261030_1`; the dev database holds only demo data, so reset
    it (`docker compose down -v; docker compose up -d` wipes Postgres and re-imports the realm) and start again.
+4. The `BOOKKEEPER` and `ACCOUNTANT` roles and users come with the realm file, so re-import the realm as in step 2 (or
+   add them in the admin console), and log in again.
+
+## Accounting
+
+Phase 1 of the accounting module (`backend/accounting`, schema `accounting`): a chart of accounts copied from a
+template at setup, journal entries that go draft -> post -> reverse with maker/checker, gapless `JE-<year>-<6 digits>`
+numbers per tenant and year, monthly periods, a trial balance and a general ledger. The screens arrive with the
+frontend plan; until then use the API (Swagger UI: `/swagger-ui.html`).
+
+| Method and path | Permission | Notes |
+|---|---|---|
+| `POST /api/accounting/setup` | `account-manage` | Copies the template, creates settings, opens the current year; 409 if done |
+| `GET`, `PUT /api/accounting/settings` | `read` / `account-manage` | `PUT` is audited |
+| `GET /api/accounting/accounts` | `read` | Flat list with `parentId` |
+| `POST /api/accounting/accounts`, `PUT`, `DELETE /api/accounting/accounts/{id}` | `account-manage` | Type changes and delete only without lines |
+| `GET /api/accounting/periods?year=` | `read` | |
+| `POST /api/accounting/periods/year/{year}` | `period-manage` | 409 if they exist |
+| `POST /api/accounting/periods/{id}/close`, `/reopen` | `period-manage` | Close: 409 `period-has-drafts`; reopen needs `{reason}` |
+| `GET /api/accounting/journal-entries?from&to&status&accountId&q&page&size` | `read` | Paged, `size` max 200 |
+| `GET /api/accounting/journal-entries/{id}` | `read` | With lines |
+| `POST`, `PUT`, `DELETE /api/accounting/journal-entries[/{id}]` | `write` | Drafts only; the date field is `date`; `PUT` carries `version`; `DELETE` takes `?version=` |
+| `POST /api/accounting/journal-entries/{id}/post`, `/reverse` | `post` | `post` takes the required `?version=` the checker reviewed (409 `version-conflict` if the draft changed); reverse body `{date, copyToDraft}`, and the date cannot precede the original entry |
+| `GET /api/accounting/reports/trial-balance?asOf=` | `read` | Totals and difference |
+| `GET /api/accounting/reports/general-ledger?accountId&from&to` | `read` | Opening, running and closing balance |
+
+Amounts are JSON strings with two decimals (`"1665000.00"`). Every error carries a stable `code`.
 
 ## Add a feature module
 
