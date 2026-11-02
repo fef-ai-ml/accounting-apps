@@ -3,6 +3,7 @@ package com.example.accounting;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -26,6 +27,9 @@ class PostingConcurrencyTests extends AccountingTestSupport {
 
 	@Autowired
 	PostingService posting;
+
+	@Autowired
+	PeriodService periodService;
 
 	@BeforeEach
 	void setup() throws Exception {
@@ -111,6 +115,41 @@ class PostingConcurrencyTests extends AccountingTestSupport {
 		finally {
 			pool.shutdownNow();
 		}
+	}
+
+	@Test
+	void aReversalRacingACloseWaitsAndIsRefused() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		assertThat(postEntry(id).getStatus()).isEqualTo(200);
+		String body = mvc.perform(get("/api/accounting/periods").param("year", String.valueOf(YEAR)).with(admin()))
+				.andReturn().getResponse().getContentAsString();
+		long june = ((Number) JsonPath.read(body, "$[5].id")).longValue();
+		CountDownLatch closed = new CountDownLatch(1);
+		ExecutorService pool = Executors.newSingleThreadExecutor();
+		try {
+			// The close stays uncommitted for 500 ms after it has run, so a reversal without the lock sees OPEN.
+			Future<?> closing = pool.submit(() -> inTenantTransaction(tenant, "closer", () -> {
+				periodService.close(june);
+				closed.countDown();
+				try {
+					Thread.sleep(500);
+				}
+				catch (InterruptedException ex) {
+					throw new IllegalStateException(ex);
+				}
+				return null;
+			}));
+			assertThat(closed.await(30, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+			mvc.perform(post("/api/accounting/journal-entries/" + id + "/reverse").with(as("checker", READ, POST))
+					.contentType("application/json").content("{\"date\": \"" + YEAR + "-06-15\"}"))
+					.andExpect(problem(422, "period-closed"));
+			closing.get();
+		}
+		finally {
+			pool.shutdownNow();
+		}
+		mvc.perform(get("/api/accounting/journal-entries/" + id).with(as("u", READ)))
+				.andExpect(jsonPath("$.status").value("POSTED"));
 	}
 
 }
