@@ -16,6 +16,7 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -27,8 +28,11 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.example.security.KeycloakAuthentication;
+import com.jayway.jsonpath.JsonPath;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -109,6 +113,40 @@ abstract class AccountingTestSupport {
 
 	<T> T inTransaction(Supplier<T> work) {
 		return inTenantTransaction(tenant, "test-sub", work);
+	}
+
+	void setupAccounting() throws Exception {
+		mvc.perform(post("/api/accounting/setup").with(admin())).andExpect(status().isOk());
+	}
+
+	long account(String code) throws Exception {
+		String body = mvc.perform(get("/api/accounting/accounts").with(admin())).andReturn().getResponse().getContentAsString();
+		List<Number> ids = JsonPath.read(body, "$[?(@.code=='" + code + "')].id");
+		return ids.get(0).longValue();
+	}
+
+	static String line(long accountId, String debit, String credit) {
+		return """
+				{"accountId": %d, "debit": "%s", "credit": "%s"}""".formatted(accountId, debit, credit);
+	}
+
+	static String entry(String date, String... lines) {
+		return """
+				{"date": "%s", "reference": "REF", "description": "Test entry", "lines": [%s]}
+				""".formatted(date, String.join(",", lines));
+	}
+
+	long draft(String sub, String date, String... lines) throws Exception {
+		String body = mvc.perform(post("/api/accounting/journal-entries").with(as(sub, READ, WRITE))
+						.contentType(MediaType.APPLICATION_JSON).content(entry(date, lines)))
+				.andExpect(status().isCreated())
+				.andReturn().getResponse().getContentAsString();
+		return ((Number) JsonPath.read(body, "$.id")).longValue();
+	}
+
+	/** A draft of 100.00 from cash to sales. */
+	long balancedDraft(String sub, String date) throws Exception {
+		return draft(sub, date, line(account("1110"), "100.00", "0"), line(account("4100"), "0", "100.00"));
 	}
 
 	/** Asserts an RFC 9457 problem with this status and stable code. */
