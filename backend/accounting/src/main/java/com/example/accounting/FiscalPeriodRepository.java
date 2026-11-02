@@ -1,0 +1,35 @@
+package com.example.accounting;
+
+import java.util.List;
+import java.util.Optional;
+
+import jakarta.persistence.LockModeType;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+interface FiscalPeriodRepository extends JpaRepository<FiscalPeriod, Long> {
+
+	boolean existsByYear(int year);
+
+	List<FiscalPeriod> findByYearOrderByMonth(int year);
+
+	Optional<FiscalPeriod> findByYearAndMonth(int year, int month);
+
+	/** Posting holds this until commit, so a close waits for it and sees the posted entry. */
+	@Lock(LockModeType.PESSIMISTIC_READ)
+	@Query("select p from FiscalPeriod p where p.year = :year and p.month = :month")
+	Optional<FiscalPeriod> lockForPosting(@Param("year") int year, @Param("month") int month);
+
+	/** Closing holds this until commit, so a racing post waits and then sees CLOSED. */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select p from FiscalPeriod p where p.id = :id")
+	Optional<FiscalPeriod> lockForClosing(@Param("id") long id);
+
+	@Query(nativeQuery = true,
+			value = "select count(*) from accounting.journal_entry where period_id = :id and status = 'DRAFT'")
+	long countDrafts(@Param("id") long id);
+
+}
