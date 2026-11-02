@@ -1,5 +1,6 @@
 package com.example.accounting;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -37,11 +38,13 @@ public class PostingService {
 		this.clock = clock;
 	}
 
-	public EntryResponse post(long id) {
+	/** {@code version} is the one the approver reviewed; posting an entry edited since is refused. */
+	public EntryResponse post(long id, long version) {
 		Actor actor = Actor.current();
 		Settings current = settings.require();
 		JournalEntry entry = journal.load(id);
 		JournalService.requireDraft(entry);
+		JournalService.requireVersion(entry, version);
 		JournalRules.checkBalanced(entry.sides());
 		journal.checkAccountsUsable(entry.getLines().stream().map(JournalLine::getAccountId).toList());
 		lockOpenPeriod(entry.getEntryDate());
@@ -51,7 +54,9 @@ public class PostingService {
 					"You prepared this entry; another user must post it");
 		}
 		assignNumberAndPost(entry, actor);
-		audit.record(AuditAction.POST, "journal_entry", entry.getId(), Map.of("entryNo", entry.getEntryNo()));
+		audit.record(AuditAction.POST, "journal_entry", entry.getId(), Map.of("entryNo", entry.getEntryNo(),
+				"totalDebit", entry.sides().stream().map(Side::debit).reduce(BigDecimal.ZERO, BigDecimal::add),
+				"version", version));
 		return EntryResponse.from(entry);
 	}
 
@@ -65,10 +70,13 @@ public class PostingService {
 		if (original.getStatus() == EntryStatus.REVERSED) {
 			throw AccountingException.conflict("already-reversed", "This entry has already been reversed");
 		}
+		LocalDate date = request.date() != null ? request.date() : LocalDate.now(clock);
+		if (date.isBefore(original.getEntryDate())) {
+			throw AccountingException.badRequest("validation", "A reversal cannot be dated before the entry it reverses");
+		}
 		// The guard on journal_line would otherwise reject these lines with an unexplained 500.
 		journal.checkAccountsUsable(original.getLines().stream().map(JournalLine::getAccountId).toList());
 		Instant now = clock.instant();
-		LocalDate date = request.date() != null ? request.date() : LocalDate.now(clock);
 		FiscalPeriod period = lockOpenPeriod(date);
 
 		JournalEntry reversal = new JournalEntry(date, period.getId(), original.getReference(),

@@ -47,8 +47,9 @@ public class AccountService {
 			throw AccountingException.conflict("account-in-use",
 					"The type and postability of an account with journal lines cannot change");
 		}
+		// Unlike create, a PUT without active keeps the current value rather than reactivating the account.
 		account.update(request.code(), request.name(), request.type(), request.parentId(), request.postable(),
-				request.activeOrDefault());
+				request.active() != null ? request.active() : account.isActive());
 		return AccountResponse.from(account);
 	}
 

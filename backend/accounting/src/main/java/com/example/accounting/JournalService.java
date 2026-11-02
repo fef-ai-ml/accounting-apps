@@ -52,6 +52,12 @@ public class JournalService {
 			throw AccountingException.badRequest("validation",
 					"page must not be negative and size must be between 1 and " + MAX_PAGE_SIZE);
 		}
+		if ((long) page * size > Integer.MAX_VALUE) {
+			throw AccountingException.badRequest("validation", "page is too large");
+		}
+		if (from != null && to != null && from.isAfter(to)) {
+			throw AccountingException.badRequest("validation", "from must not be after to");
+		}
 		Page<JournalEntry> result = entries.findAll(filter(from, to, status, accountId, q),
 				PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "entryDate", "id")));
 		return new EntryPage(result.stream().map(EntrySummary::from).toList(), result.getTotalElements(), page, size);
@@ -77,9 +83,7 @@ public class JournalService {
 		if (request.version() == null) {
 			throw AccountingException.badRequest("validation", "version is required when updating an entry");
 		}
-		if (!request.version().equals(entry.getVersion())) {
-			throw AccountingException.conflict("version-conflict", "Someone else changed this entry");
-		}
+		requireVersion(entry, request.version());
 		List<ValidLine> lines = validated(request.lines());
 		entry.edit(request.date(), periodOf(request.date()), request.reference(), request.description(),
 				Actor.current(), clock.instant());
@@ -90,9 +94,10 @@ public class JournalService {
 		return EntryResponse.from(entries.saveAndFlush(entry));
 	}
 
-	public void delete(long id) {
+	public void delete(long id, long version) {
 		JournalEntry entry = load(id);
 		requireDraft(entry);
+		requireVersion(entry, version);
 		entries.delete(entry);
 	}
 
@@ -106,6 +111,12 @@ public class JournalService {
 		}
 	}
 
+	static void requireVersion(JournalEntry entry, long version) {
+		if (entry.getVersion() == null || entry.getVersion() != version) {
+			throw AccountingException.conflict("version-conflict", "Someone else changed this entry");
+		}
+	}
+
 	/** An unknown id and another tenant's id are refused the same way as an unusable account. */
 	public void checkAccountsUsable(Collection<Long> accountIds) {
 		Set<Long> ids = Set.copyOf(accountIds);
@@ -115,7 +126,7 @@ public class JournalService {
 			Account account = found.get(id);
 			if (account == null || !account.isPostable() || !account.isActive()) {
 				throw AccountingException.unprocessable("account-not-postable",
-						"Account " + id + " cannot receive journal lines");
+						"Account " + (account != null ? account.getCode() : id) + " cannot receive journal lines");
 			}
 		}
 	}

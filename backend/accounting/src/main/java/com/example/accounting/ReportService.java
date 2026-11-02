@@ -37,12 +37,14 @@ public class ReportService {
 	public TrialBalance trialBalance(LocalDate requestedAsOf) {
 		LocalDate asOf = requestedAsOf != null ? requestedAsOf : LocalDate.now(clock);
 		@SuppressWarnings("unchecked")
+		// The one query with no other tenant predicate: were the API ever run as the owner, RLS would not apply here.
 		List<Object[]> found = entityManager.createNativeQuery("""
 				select a.id, a.code, a.name, a.type, sum(l.debit), sum(l.credit)
 				from accounting.account a
 				join accounting.journal_line l on l.tenant_id = a.tenant_id and l.account_id = a.id
 				join accounting.journal_entry e on e.tenant_id = l.tenant_id and e.id = l.entry_id
 				where e.status in ('POSTED', 'REVERSED') and e.entry_date <= :asOf
+				  and a.tenant_id = cast(nullif(current_setting('app.tenant_id', true), '') as uuid)
 				group by a.id, a.code, a.name, a.type
 				order by a.code
 				""").setParameter("asOf", asOf).getResultList();

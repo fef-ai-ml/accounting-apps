@@ -258,7 +258,7 @@ class TokenToPermissionsTests {
 						.contentType(MediaType.APPLICATION_JSON).content(draft))
 				.andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
 		long entry = ((Number) JsonPath.read(created, "$.id")).longValue();
-		String postPath = "/api/accounting/journal-entries/" + entry + "/post";
+		String postPath = "/api/accounting/journal-entries/" + entry + "/post?version=0";
 
 		mvc.perform(post(postPath).header(HttpHeaders.AUTHORIZATION, bookkeeper)).andExpect(status().isForbidden());
 		mvc.perform(post(postPath).header(HttpHeaders.AUTHORIZATION, accountant))

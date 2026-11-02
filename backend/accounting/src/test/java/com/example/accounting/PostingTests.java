@@ -30,10 +30,6 @@ class PostingTests extends AccountingTestSupport {
 		sales = account("4100");
 	}
 
-	private ResultActions postEntry(long id, String sub) throws Exception {
-		return mvc.perform(post("/api/accounting/journal-entries/" + id + "/post").with(as(sub, READ, POST)));
-	}
-
 	private ResultActions reverse(long id, String json) throws Exception {
 		return mvc.perform(post("/api/accounting/journal-entries/" + id + "/reverse").with(as("checker", READ, POST))
 				.contentType(MediaType.APPLICATION_JSON).content(json));
@@ -88,10 +84,10 @@ class PostingTests extends AccountingTestSupport {
 						.content(entry(DATE, line(otherCash, "5", "0"), line(otherSales, "0", "5"))))
 				.andReturn().getResponse().getContentAsString();
 		long otherEntry = ((Number) JsonPath.read(created, "$.id")).longValue();
-		mvc.perform(post("/api/accounting/journal-entries/" + otherEntry + "/post").with(asTenant(other, "p", POST)))
+		mvc.perform(post("/api/accounting/journal-entries/" + otherEntry + "/post").param("version", "0").with(asTenant(other, "p", POST)))
 				.andExpect(jsonPath("$.entryNo").value("JE-" + YEAR + "-000001"));
 
-		mvc.perform(post("/api/accounting/journal-entries/" + otherEntry + "/post").with(as("checker", POST)))
+		mvc.perform(post("/api/accounting/journal-entries/" + otherEntry + "/post").param("version", "0").with(as("checker", POST)))
 				.andExpect(problem(404, "not-found"));
 	}
 
@@ -106,7 +102,7 @@ class PostingTests extends AccountingTestSupport {
 	@Test
 	void postingNeedsThePostPermission() throws Exception {
 		long id = balancedDraft("maker", DATE);
-		mvc.perform(post("/api/accounting/journal-entries/" + id + "/post").with(as("u", READ, WRITE)))
+		mvc.perform(post("/api/accounting/journal-entries/" + id + "/post").param("version", "0").with(as("u", READ, WRITE)))
 				.andExpect(problem(403, "forbidden"));
 	}
 
@@ -134,7 +130,8 @@ class PostingTests extends AccountingTestSupport {
 		postEntry(id, "checker").andExpect(status().isOk());
 
 		postEntry(id, "checker").andExpect(problem(409, "not-draft"));
-		mvc.perform(delete("/api/accounting/journal-entries/" + id).with(as("maker", WRITE))).andExpect(problem(409, "not-draft"));
+		mvc.perform(delete("/api/accounting/journal-entries/" + id).param("version", "0").with(as("maker", WRITE)))
+				.andExpect(problem(409, "not-draft"));
 		mvc.perform(put("/api/accounting/journal-entries/" + id).with(as("maker", WRITE)).contentType(MediaType.APPLICATION_JSON)
 				.content(entry(DATE).replaceFirst("\\{", "{\"version\": 0, "))).andExpect(problem(409, "not-draft"));
 	}
@@ -169,7 +166,8 @@ class PostingTests extends AccountingTestSupport {
 	void aDeactivatedAccountBlocksPosting() throws Exception {
 		long id = balancedDraft("maker", DATE);
 		deactivate(sales, "4100", "Penjualan", "REVENUE", account("4000"));
-		postEntry(id, "checker").andExpect(problem(422, "account-not-postable"));
+		postEntry(id, "checker").andExpect(problem(422, "account-not-postable"))
+				.andExpect(jsonPath("$.detail").value("Account 4100 cannot receive journal lines"));
 	}
 
 	private void deactivate(long accountId, String code, String name, String type, long parent) throws Exception {
@@ -192,6 +190,8 @@ class PostingTests extends AccountingTestSupport {
 				.andExpect(jsonPath("$.reversal.reversalOf").value((int) id))
 				.andExpect(jsonPath("$.reversal.lines[0].debit").value("0.00"))
 				.andExpect(jsonPath("$.reversal.lines[0].credit").value("100.00"))
+				.andExpect(jsonPath("$.reversal.lines[1].debit").value("100.00"))
+				.andExpect(jsonPath("$.reversal.lines[1].credit").value("0.00"))
 				.andExpect(jsonPath("$.draftId").isEmpty())
 				.andReturn().getResponse().getContentAsString();
 		long reversalId = ((Number) JsonPath.read(body, "$.reversal.id")).longValue();
@@ -207,7 +207,8 @@ class PostingTests extends AccountingTestSupport {
 
 	@Test
 	void theMakerMayReverseAndTheDateDefaultsToToday() throws Exception {
-		long id = balancedDraft("checker", DATE);
+		// Dated at the start of the year so that "today" is never before it.
+		long id = balancedDraft("checker", YEAR + "-01-01");
 		postEntry(id, "other");
 		reverse(id, "{}")
 				.andExpect(status().isOk())
@@ -228,6 +229,7 @@ class PostingTests extends AccountingTestSupport {
 				.andExpect(jsonPath("$.status").value("DRAFT"))
 				.andExpect(jsonPath("$.lines[0].debit").value("100.00"))
 				.andExpect(jsonPath("$.createdByName").value("checker-name"));
+		postEntry(draftId, "checker").andExpect(problem(403, "separate-poster-required"));
 	}
 
 	@Test
@@ -237,13 +239,45 @@ class PostingTests extends AccountingTestSupport {
 
 		long id = balancedDraft("maker", DATE);
 		postEntry(id, "checker");
-		reverse(id, "{\"date\": \"1999-01-01\"}").andExpect(problem(422, "no-period"));
+		reverse(id, "{\"date\": \"" + (YEAR + 5) + "-01-01\"}").andExpect(problem(422, "no-period"));
 		closePeriod(5);
 		reverse(id, "{\"date\": \"" + YEAR + "-05-01\"}").andExpect(problem(422, "period-closed"));
 		reverse(id, "{\"date\": \"" + DATE + "\"}").andExpect(status().isOk());
 		reverse(id, "{\"date\": \"" + DATE + "\"}").andExpect(problem(409, "already-reversed"));
 		mvc.perform(post("/api/accounting/journal-entries/" + id + "/reverse").with(as("u", READ))
 				.contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(problem(403, "forbidden"));
+	}
+
+	@Test
+	void aReversalCannotPrecedeTheEntryItReverses() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		postEntry(id, "checker");
+		reverse(id, "{\"date\": \"" + YEAR + "-02-01\"}").andExpect(problem(400, "validation"));
+		mvc.perform(get("/api/accounting/journal-entries/" + id).with(as("u", READ)))
+				.andExpect(jsonPath("$.status").value("POSTED"));
+		reverse(id, "{\"date\": \"" + DATE + "\"}").andExpect(status().isOk());
+	}
+
+	@Test
+	void postingNeedsTheVersionTheCheckerReviewed() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		long reviewed = versionOf(id);
+		mvc.perform(put("/api/accounting/journal-entries/" + id).with(as("maker", WRITE)).contentType(MediaType.APPLICATION_JSON)
+				.content(entry(DATE, line(cash, "9999999", "0"), line(sales, "0", "9999999"))
+						.replaceFirst("\\{", "{\"version\": " + reviewed + ", ")))
+				.andExpect(status().isOk());
+
+		postEntry(id, reviewed, "checker").andExpect(problem(409, "version-conflict"));
+		mvc.perform(get("/api/accounting/journal-entries/" + id).with(as("u", READ)))
+				.andExpect(jsonPath("$.status").value("DRAFT"));
+		mvc.perform(post("/api/accounting/journal-entries/" + id + "/post").with(as("checker", READ, POST)))
+				.andExpect(problem(400, "validation"));
+
+		postEntry(id, versionOf(id), "checker").andExpect(status().isOk());
+		String details = inTransaction(() -> (String) entityManager.createNativeQuery(
+				"select cast(details as text) from accounting.audit_log where action = 'POST' and entity_id = :id")
+				.setParameter("id", id).getSingleResult());
+		assertThat(details).contains("9999999").contains("\"version\"");
 	}
 
 	@Test

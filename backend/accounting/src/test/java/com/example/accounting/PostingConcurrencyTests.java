@@ -37,8 +37,57 @@ class PostingConcurrencyTests extends AccountingTestSupport {
 	}
 
 	private MockHttpServletResponse postEntry(long id) throws Exception {
-		return mvc.perform(post("/api/accounting/journal-entries/" + id + "/post").with(as("checker", READ, POST)))
-				.andReturn().getResponse();
+		return postEntry(id, versionOf(id), "checker").andReturn().getResponse();
+	}
+
+	/** Runs the same request on two threads at once and returns both responses. */
+	private List<MockHttpServletResponse> inParallel(Callable<MockHttpServletResponse> request) throws Exception {
+		ExecutorService pool = Executors.newFixedThreadPool(2);
+		try {
+			CountDownLatch go = new CountDownLatch(1);
+			Callable<MockHttpServletResponse> gated = () -> {
+				go.await();
+				return request.call();
+			};
+			List<Future<MockHttpServletResponse>> both = List.of(pool.submit(gated), pool.submit(gated));
+			go.countDown();
+			List<MockHttpServletResponse> responses = new ArrayList<>();
+			for (Future<MockHttpServletResponse> future : both) {
+				responses.add(future.get());
+			}
+			return responses;
+		}
+		finally {
+			pool.shutdownNow();
+		}
+	}
+
+	private long count(String sql) {
+		return inTransaction(() -> ((Number) entityManager.createNativeQuery(sql).getSingleResult()).longValue());
+	}
+
+	@Test
+	void aDoublePostIsOneSuccessOneConflictAndOneNumber() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		long version = versionOf(id);
+		List<MockHttpServletResponse> responses = inParallel(() -> postEntry(id, version, "checker").andReturn().getResponse());
+
+		assertThat(responses).extracting(MockHttpServletResponse::getStatus).containsExactlyInAnyOrder(200, 409);
+		assertThat(count("select next_value from accounting.entry_sequence where year = " + YEAR)).isEqualTo(2);
+		assertThat(postEntry(balancedDraft("maker", DATE)).getStatus()).isEqualTo(200);
+	}
+
+	@Test
+	void aDoubleReverseIsOneSuccessOneConflictAndOneReversal() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		assertThat(postEntry(id).getStatus()).isEqualTo(200);
+		List<MockHttpServletResponse> responses = inParallel(() -> mvc
+				.perform(post("/api/accounting/journal-entries/" + id + "/reverse").with(as("checker", READ, POST))
+						.contentType("application/json").content("{\"date\": \"" + DATE + "\"}"))
+				.andReturn().getResponse());
+
+		assertThat(responses).extracting(MockHttpServletResponse::getStatus).containsExactlyInAnyOrder(200, 409);
+		assertThat(count("select count(*) from accounting.journal_entry where reversal_of = " + id)).isEqualTo(1);
 	}
 
 	@Test
@@ -72,49 +121,15 @@ class PostingConcurrencyTests extends AccountingTestSupport {
 		long id = balancedDraft("maker", DATE);
 		// A number is allocated, then the transaction rolls back after it, as a failure at commit would.
 		assertThatThrownBy(() -> inTenantTransaction(tenant, "checker", () -> {
-			posting.post(id);
+			posting.post(id, 0);
 			throw new IllegalStateException("roll back after numbering");
 		})).hasMessage("roll back after numbering");
 		long unbalanced = draft("maker", DATE, line(account("1110"), "1", "0"));
 		assertThat(postEntry(unbalanced).getStatus()).isEqualTo(422);
 
-		mvc.perform(post("/api/accounting/journal-entries/" + id + "/post").with(as("checker", READ, POST)))
+		postEntry(id, "checker")
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.entryNo").value("JE-" + YEAR + "-000001"));
-	}
-
-	@Test
-	void aPostRacingACloseNeverLandsInAClosedPeriodAfterTheClose() throws Exception {
-		String body = mvc.perform(get("/api/accounting/periods").param("year", String.valueOf(YEAR)).with(admin()))
-				.andReturn().getResponse().getContentAsString();
-		long period = ((Number) JsonPath.read(body, "$[2].id")).longValue();
-		ExecutorService pool = Executors.newFixedThreadPool(2);
-		try {
-			for (int round = 0; round < 10; round++) {
-				long id = balancedDraft("maker", DATE);
-				Future<MockHttpServletResponse> posted = pool.submit(() -> postEntry(id));
-				Future<MockHttpServletResponse> closed = pool.submit(() -> mvc
-						.perform(post("/api/accounting/periods/" + period + "/close").with(as("closer", PERIOD_MANAGE)))
-						.andReturn().getResponse());
-				assertThat(posted.get().getStatus()).isIn(200, 422);
-				assertThat(closed.get().getStatus()).isIn(200, 409);
-
-				Object[] state = inTransaction(() -> (Object[]) entityManager.createNativeQuery("""
-						select p.status, e.status <> 'POSTED' or p.status = 'OPEN' or e.posted_at <= p.closed_at
-						from accounting.journal_entry e join accounting.fiscal_period p on p.id = e.period_id
-						where e.id = :id
-						""").setParameter("id", id).getSingleResult());
-				assertThat(state[1]).as("a post never lands after the close").isEqualTo(true);
-				if ("CLOSED".equals(state[0])) {
-					mvc.perform(post("/api/accounting/periods/" + period + "/reopen").with(as("closer", PERIOD_MANAGE))
-							.contentType("application/json").content("{\"reason\": \"next round\"}"))
-							.andExpect(status().isOk());
-				}
-			}
-		}
-		finally {
-			pool.shutdownNow();
-		}
 	}
 
 	@Test

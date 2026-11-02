@@ -30,7 +30,7 @@ class ReportTests extends AccountingTestSupport {
 
 	private long posted(String date, String... lines) throws Exception {
 		long id = draft("maker", date, lines);
-		mvc.perform(post("/api/accounting/journal-entries/" + id + "/post").with(as("checker", POST))).andExpect(status().isOk());
+		postEntry(id, "checker").andExpect(status().isOk());
 		return id;
 	}
 

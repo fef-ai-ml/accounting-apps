@@ -190,8 +190,8 @@ frontend plan; until then use the API (Swagger UI: `/swagger-ui.html`).
 | `POST /api/accounting/periods/{id}/close`, `/reopen` | `period-manage` | Close: 409 `period-has-drafts`; reopen needs `{reason}` |
 | `GET /api/accounting/journal-entries?from&to&status&accountId&q&page&size` | `read` | Paged, `size` max 200 |
 | `GET /api/accounting/journal-entries/{id}` | `read` | With lines |
-| `POST`, `PUT`, `DELETE /api/accounting/journal-entries[/{id}]` | `write` | Drafts only; the date field is `date`; `PUT` carries `version` |
-| `POST /api/accounting/journal-entries/{id}/post`, `/reverse` | `post` | Reverse body `{date, copyToDraft}` |
+| `POST`, `PUT`, `DELETE /api/accounting/journal-entries[/{id}]` | `write` | Drafts only; the date field is `date`; `PUT` carries `version`; `DELETE` takes `?version=` |
+| `POST /api/accounting/journal-entries/{id}/post`, `/reverse` | `post` | `post` takes the required `?version=` the checker reviewed (409 `version-conflict` if the draft changed); reverse body `{date, copyToDraft}`, and the date cannot precede the original entry |
 | `GET /api/accounting/reports/trial-balance?asOf=` | `read` | Totals and difference |
 | `GET /api/accounting/reports/general-ledger?accountId&from&to` | `read` | Opening, running and closing balance |
 

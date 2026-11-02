@@ -176,6 +176,14 @@ class DatabaseGuardTests extends AccountingTestSupport {
 			TENANT_TABLES.forEach(table -> assertThat(count(table)).as(table).isZero());
 			return 0;
 		});
+		// No tenant at all (app.tenant_id empty) sees nothing and may insert nothing.
+		inTenantTransaction(null, "nobody", () -> {
+			TENANT_TABLES.forEach(table -> assertThat(count(table)).as(table + " without a tenant").isZero());
+			return 0;
+		});
+		assertThatThrownBy(() -> inTenantTransaction(null, "nobody", () -> entityManager
+				.createNativeQuery("insert into accounting.settings (tenant_id) values (cast(:t as uuid))")
+				.setParameter("t", tenant.toString()).executeUpdate())).hasStackTraceContaining("row-level security");
 		// WITH CHECK on every table, naming this test's tenant while running as another one; parent ids are dummies.
 		List<String> inserts = List.of(
 				"insert into accounting.settings (tenant_id) values (cast(:t as uuid))",

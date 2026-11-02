@@ -22,6 +22,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.ResultMatcher;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -42,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(classes = AccountingTestSupport.TestApp.class,
 		properties = { "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9/realms/test",
-				"spring.jpa.hibernate.ddl-auto=validate" })
+				"spring.jpa.hibernate.ddl-auto=validate", "spring.jpa.open-in-view=false" })
 @AutoConfigureMockMvc
 abstract class AccountingTestSupport {
 
@@ -142,6 +143,22 @@ abstract class AccountingTestSupport {
 				.andExpect(status().isCreated())
 				.andReturn().getResponse().getContentAsString();
 		return ((Number) JsonPath.read(body, "$.id")).longValue();
+	}
+
+	long versionOf(long id) throws Exception {
+		String body = mvc.perform(get("/api/accounting/journal-entries/" + id).with(as("u", READ))).andReturn()
+				.getResponse().getContentAsString();
+		return ((Number) JsonPath.read(body, "$.version")).longValue();
+	}
+
+	/** Posts with the entry's current version, as a checker who has just read it. */
+	ResultActions postEntry(long id, String sub) throws Exception {
+		return postEntry(id, versionOf(id), sub);
+	}
+
+	ResultActions postEntry(long id, long version, String sub) throws Exception {
+		return mvc.perform(post("/api/accounting/journal-entries/" + id + "/post").param("version", String.valueOf(version))
+				.with(as(sub, READ, POST)));
 	}
 
 	/** A draft of 100.00 from cash to sales. */

@@ -62,8 +62,8 @@ public class JournalController {
 
 	@DeleteMapping("/{id}")
 	@PreAuthorize("hasAuthority('accounting:write')")
-	public ResponseEntity<Void> delete(@PathVariable long id) {
-		service.delete(id);
+	public ResponseEntity<Void> delete(@PathVariable long id, @RequestParam long version) {
+		service.delete(id, version);
 		return ResponseEntity.noContent().build();
 	}
 

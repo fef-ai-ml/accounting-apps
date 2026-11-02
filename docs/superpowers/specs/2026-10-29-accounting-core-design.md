@@ -49,6 +49,10 @@ Settled during implementation, beyond the plan's list:
 - Database guards are stricter than the first design: every non-draft entry must balance at commit, DRAFT -> REVERSED is refused, line writes take `FOR SHARE` on the parent entry and the account so they serialize with posting and deactivation, and `line_account` fires on any line insert or update.
 - The REST body field for the entry date is `date`.
 - A missing `copyToDraft` means false (the field is `Boolean`, since Jackson 3 refuses a missing primitive).
+- Post and draft delete require `version`; a stale one is 409 `version-conflict`. The POST audit row records `totalDebit` and `version`.
+- A reversal cannot be dated before its original (400 `validation`).
+- New codes: 409 `conflict` (unique violation, SQLSTATE 23505), 500 `database-error`; `invariant-violated` is the 500 code for trigger/CHECK rejections (P0001, 23514). Data exceptions (class 22) are 400 `validation`.
+- A `PUT` of an account without `active` keeps the current value; only create defaults it to true.
 
 ## Architecture
 
@@ -208,8 +212,8 @@ side. `1290 Akumulasi Penyusutan` is a contra-asset with a credit balance; Phase
 | `GET /journal-entries/{id}` | `read` | Entry with lines |
 | `POST /journal-entries` | `write` | Creates a draft |
 | `PUT /journal-entries/{id}` | `write` | Draft only; body carries `version`; replaces all lines |
-| `DELETE /journal-entries/{id}` | `write` | Draft only |
-| `POST /journal-entries/{id}/post` | `post` | See posting rules |
+| `DELETE /journal-entries/{id}?version=` | `write` | Draft only; `version` required |
+| `POST /journal-entries/{id}/post?version=` | `post` | `version` required (the one reviewed); see posting rules |
 | `POST /journal-entries/{id}/reverse` | `post` | Body `{date, copyToDraft}`; returns the reversal (and the new draft id) |
 | `GET /reports/trial-balance?asOf=` | `read` | Per account: debit total, credit total, balance on its normal side; totals |
 | `GET /reports/general-ledger?accountId&from&to` | `read` | Opening balance, lines with running balance, closing balance |
@@ -271,9 +275,9 @@ Every failure is an RFC 9457 `ProblemDetail` with a stable `code` property:
 | 400 | `invalid-line`, `too-many-lines`, `invalid-amount`, `validation` |
 | 403 | `forbidden`, `separate-poster-required` |
 | 404 | `not-found` (also for another tenant's ids) |
-| 409 | `version-conflict`, `not-draft`, `already-reversed`, `already-initialized`, `period-has-drafts`, `periods-exist`, `account-in-use` |
+| 409 | `conflict`, `version-conflict`, `not-draft`, `already-reversed`, `already-initialized`, `period-has-drafts`, `periods-exist`, `account-in-use` |
 | 422 | `unbalanced`, `too-few-lines`, `period-closed`, `no-period`, `account-not-postable`, `not-initialized` |
-| 500 | A database guard rejected what the service allowed; logged as an invariant bug |
+| 500 | `invariant-violated` (a trigger or CHECK rejected what the service allowed; logged as a bug), `database-error` (any other database failure) |
 
 ## Testing
 

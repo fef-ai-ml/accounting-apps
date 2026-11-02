@@ -127,6 +127,12 @@ class SetupAndAccountsTests extends AccountingTestSupport {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.code").value("1171"))
 				.andExpect(jsonPath("$.active").value(false));
+		mvc.perform(put("/api/accounting/accounts/" + id).with(admin()).contentType(MediaType.APPLICATION_JSON).content("""
+						{"code": "1171", "name": "Renamed again", "type": "ASSET", "parentId": %d, "postable": true}
+						""".formatted(parent)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.name").value("Renamed again"))
+				.andExpect(jsonPath("$.active").value(false));
 
 		mvc.perform(delete("/api/accounting/accounts/" + id).with(admin())).andExpect(status().isNoContent());
 		mvc.perform(delete("/api/accounting/accounts/" + id).with(admin())).andExpect(problem(404, "not-found"));

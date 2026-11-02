@@ -4,11 +4,15 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.ResultActions;
 
 import com.jayway.jsonpath.JsonPath;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -19,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+@ExtendWith(OutputCaptureExtension.class)
 class JournalDraftTests extends AccountingTestSupport {
 
 	private long cash;
@@ -41,11 +46,6 @@ class JournalDraftTests extends AccountingTestSupport {
 		String json = entry(date, lines).replaceFirst("\\{", "{\"version\": " + version + ", ");
 		return mvc.perform(put("/api/accounting/journal-entries/" + id).with(as("editor", READ, WRITE))
 				.contentType(MediaType.APPLICATION_JSON).content(json));
-	}
-
-	private long versionOf(long id) throws Exception {
-		String body = mvc.perform(get("/api/accounting/journal-entries/" + id).with(as("u", READ))).andReturn().getResponse().getContentAsString();
-		return ((Number) JsonPath.read(body, "$.version")).longValue();
 	}
 
 	@Test
@@ -152,8 +152,33 @@ class JournalDraftTests extends AccountingTestSupport {
 	@Test
 	void aDraftCanBeDeleted() throws Exception {
 		long id = draft("maker", DATE, line(cash, "1", "0"));
-		mvc.perform(delete("/api/accounting/journal-entries/" + id).with(as("u", WRITE))).andExpect(status().isNoContent());
+		long version = versionOf(id);
+		update(id, version, DATE, line(cash, "2", "0")).andExpect(status().isOk());
+
+		deleteDraft(id, version, as("u", WRITE)).andExpect(problem(409, "version-conflict"));
+		mvc.perform(get("/api/accounting/journal-entries/" + id).with(as("u", READ))).andExpect(status().isOk());
+		mvc.perform(delete("/api/accounting/journal-entries/" + id).with(as("u", WRITE))).andExpect(problem(400, "validation"));
+		mvc.perform(get("/api/accounting/journal-entries/" + id).with(as("u", READ))).andExpect(status().isOk());
+
+		deleteDraft(id, versionOf(id), as("u", WRITE)).andExpect(status().isNoContent());
 		mvc.perform(get("/api/accounting/journal-entries/" + id).with(as("u", READ))).andExpect(problem(404, "not-found"));
+	}
+
+	private ResultActions deleteDraft(long id, long version,
+			org.springframework.test.web.servlet.request.RequestPostProcessor user) throws Exception {
+		return mvc.perform(delete("/api/accounting/journal-entries/" + id).param("version", String.valueOf(version)).with(user));
+	}
+
+	@Test
+	void anotherTenantCannotUpdateAndTheWritePermissionIsNeeded() throws Exception {
+		long id = draft("maker", DATE, line(cash, "1", "0"));
+		long version = versionOf(id);
+		String json = entry(DATE, line(cash, "2", "0")).replaceFirst("\\{", "{\"version\": " + version + ", ");
+		mvc.perform(put("/api/accounting/journal-entries/" + id).with(asTenant(UUID.randomUUID(), "o", READ, WRITE))
+				.contentType(MediaType.APPLICATION_JSON).content(json)).andExpect(problem(404, "not-found"));
+		mvc.perform(put("/api/accounting/journal-entries/" + id).with(as("u", READ))
+				.contentType(MediaType.APPLICATION_JSON).content(json)).andExpect(problem(403, "forbidden"));
+		deleteDraft(id, version, as("u", READ)).andExpect(problem(403, "forbidden"));
 	}
 
 	@Test
@@ -168,7 +193,7 @@ class JournalDraftTests extends AccountingTestSupport {
 		UUID other = UUID.randomUUID();
 		mvc.perform(get("/api/accounting/journal-entries/" + id).with(asTenant(other, "o", READ)))
 				.andExpect(problem(404, "not-found"));
-		mvc.perform(delete("/api/accounting/journal-entries/" + id).with(asTenant(other, "o", WRITE)))
+		mvc.perform(delete("/api/accounting/journal-entries/" + id).param("version", "0").with(asTenant(other, "o", WRITE)))
 				.andExpect(problem(404, "not-found"));
 		mvc.perform(get("/api/accounting/journal-entries").with(asTenant(other, "o", READ)))
 				.andExpect(jsonPath("$.total").value(0));
@@ -203,6 +228,17 @@ class JournalDraftTests extends AccountingTestSupport {
 				.andExpect(jsonPath("$.total").value(0));
 		mvc.perform(get("/api/accounting/journal-entries").param("q", "t_st").with(as("u", READ)))
 				.andExpect(jsonPath("$.total").value(0));
+	}
+
+	@Test
+	void valuesTheDatabaseCannotUseAreValidationNotAnInvariantAlarm(CapturedOutput output) throws Exception {
+		mvc.perform(get("/api/accounting/journal-entries").param("q", "\u0000").with(as("u", READ)))
+				.andExpect(problem(400, "validation"));
+		mvc.perform(get("/api/accounting/journal-entries").param("page", "2147483647").param("size", "200").with(as("u", READ)))
+				.andExpect(problem(400, "validation"));
+		mvc.perform(get("/api/accounting/journal-entries").param("from", YEAR + "-02-01").param("to", YEAR + "-01-01").with(as("u", READ)))
+				.andExpect(problem(400, "validation"));
+		assertThat(output).doesNotContain("A database guard rejected what the service allowed");
 	}
 
 	@Test

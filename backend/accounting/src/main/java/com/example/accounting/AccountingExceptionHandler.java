@@ -1,6 +1,7 @@
 package com.example.accounting;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -57,11 +58,31 @@ class AccountingExceptionHandler {
 		return problem(HttpStatus.CONFLICT, "version-conflict", "Someone else changed this entry");
 	}
 
-	/** The services check every rule first, so reaching a database guard is a bug, not a user error. */
+	/** Maps by SQLSTATE: only our triggers and CHECK constraints mean an invariant was reached, which is a bug. */
 	@ExceptionHandler({ DataAccessException.class, TransactionException.class })
-	ProblemDetail invariantBug(Exception ex) {
-		log.error("A database guard rejected what the service allowed", ex);
-		return problem(HttpStatus.INTERNAL_SERVER_ERROR, "invariant-violated", "The request could not be completed");
+	ProblemDetail database(Exception ex) {
+		String state = sqlState(ex);
+		if ("P0001".equals(state) || "23514".equals(state)) {
+			log.error("A database guard rejected what the service allowed", ex);
+			return problem(HttpStatus.INTERNAL_SERVER_ERROR, "invariant-violated", "The request could not be completed");
+		}
+		if ("23505".equals(state)) {
+			return problem(HttpStatus.CONFLICT, "conflict", "Someone else made the same change; reload and try again");
+		}
+		if (state != null && state.startsWith("22")) {
+			return problem(HttpStatus.BAD_REQUEST, "validation", "The request contains a value the database cannot store");
+		}
+		log.error("Database operation failed", ex);
+		return problem(HttpStatus.INTERNAL_SERVER_ERROR, "database-error", "The request could not be completed");
+	}
+
+	private static String sqlState(Throwable ex) {
+		for (Throwable cause = ex; cause != null; cause = cause.getCause() == cause ? null : cause.getCause()) {
+			if (cause instanceof SQLException sql) {
+				return sql.getSQLState();
+			}
+		}
+		return null;
 	}
 
 	private static ProblemDetail problem(HttpStatusCode status, String code, String detail) {
