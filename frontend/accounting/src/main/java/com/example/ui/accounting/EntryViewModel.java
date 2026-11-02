@@ -1,0 +1,373 @@
+package com.example.ui.accounting;
+
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.zkoss.bind.BindUtils;
+import org.zkoss.bind.annotation.BindingParam;
+import org.zkoss.bind.annotation.Command;
+import org.zkoss.bind.annotation.ContextParam;
+import org.zkoss.bind.annotation.ContextType;
+import org.zkoss.bind.annotation.ExecutionArgParam;
+import org.zkoss.bind.annotation.Init;
+import org.zkoss.bind.annotation.NotifyChange;
+import org.zkoss.zk.ui.Component;
+import org.zkoss.zk.ui.Executions;
+import org.zkoss.zk.ui.event.Event;
+import org.zkoss.zk.ui.select.annotation.VariableResolver;
+import org.zkoss.zk.ui.select.annotation.WireVariable;
+import org.zkoss.zk.ui.util.Clients;
+import org.zkoss.zul.ListModel;
+import org.zkoss.zul.ListModelList;
+import org.zkoss.zul.ListModels;
+import org.zkoss.zul.Messagebox;
+
+import com.example.ui.common.ApiErrors;
+import com.example.ui.common.CurrentUser;
+import com.example.ui.common.SpringBeanVariableResolver;
+
+/** MVVM view model behind entry.zul, a modal so any screen can open an entry. Rules live in {@link EntryForm}. */
+@VariableResolver(SpringBeanVariableResolver.class)
+public class EntryViewModel {
+
+	private static final Clock JAKARTA = Clock.system(ZoneId.of("Asia/Jakarta"));
+
+	private static final int ACCOUNT_CHOICES = 50;
+
+	@WireVariable
+	private AccountingApiClient accountingApiClient;
+
+	@WireVariable
+	private CurrentUser currentUser;
+
+	private Long id;
+
+	private EntryDto entry;
+
+	private EntryForm form = EntryForm.blank(LocalDate.now(JAKARTA));
+
+	private ListModelList<EntryLine> lines = new ListModelList<>();
+
+	private String savedSnapshot = "";
+
+	private String periodText = "";
+
+	private LocalDate reverseDate;
+
+	private boolean canWrite;
+
+	private boolean canPost;
+
+	private List<AccountDto> options = List.of();
+
+	private Map<Long, AccountDto> accountsById = Map.of();
+
+	private ListModel<Object> accountModel = new ListModelList<>();
+
+	private Component view;
+
+	/** Opens the entry in a modal window; {@code entryId} null starts a new draft. */
+	public static void open(Long entryId) {
+		Map<String, Object> args = new HashMap<>();
+		args.put("entryId", entryId);
+		Executions.createComponents("~./accounting/entry.zul", null, args);
+	}
+
+	@Init
+	public void init(@ExecutionArgParam("entryId") Long entryId, @ContextParam(ContextType.VIEW) Component view) {
+		this.view = view;
+		try {
+			canWrite = currentUser.can("accounting:write");
+			canPost = currentUser.can("accounting:post");
+			List<AccountDto> accounts = accountingApiClient.accounts();
+			accountsById = accounts.stream().collect(Collectors.toMap(AccountDto::id, Function.identity()));
+			options = accounts.stream().filter(account -> account.postable() && account.active()).toList();
+			accountModel = ListModels.toListSubModel(new ListModelList<Object>(options), new AccountMatcher(), ACCOUNT_CHOICES);
+			if (entryId != null) {
+				show(accountingApiClient.entry(entryId));
+				return;
+			}
+		}
+		catch (RuntimeException ex) {
+			ApiErrors.show(ex);
+		}
+		showForm();
+		refreshPeriod();
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void setDate(@BindingParam("date") LocalDate date) {
+		form.setDate(date);
+		refreshPeriod();
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void addLine() {
+		lines.add(new EntryLine());
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void removeLine(@BindingParam("line") EntryLine line) {
+		lines.remove(line);
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void setDebit(@BindingParam("line") EntryLine line, @BindingParam("amount") BigDecimal amount) {
+		line.setDebit(amount);
+		BindUtils.postNotifyChange(line, "*");
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void setCredit(@BindingParam("line") EntryLine line, @BindingParam("amount") BigDecimal amount) {
+		line.setCredit(amount);
+		BindUtils.postNotifyChange(line, "*");
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void typedAccount(@BindingParam("line") EntryLine line, @BindingParam("text") String text) {
+		line.pickByLabel(text, options);
+		BindUtils.postNotifyChange(line, "*");
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void balance(@BindingParam("line") EntryLine line) {
+		form.balance(line);
+		BindUtils.postNotifyChange(line, "*");
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void save() {
+		String problem = form.problem();
+		if (problem != null) {
+			warn(problem);
+			return;
+		}
+		try {
+			EntryRequest request = form.toRequest(entry == null ? null : entry.version());
+			show(id == null ? accountingApiClient.createEntry(request) : accountingApiClient.updateEntry(id, request));
+			entryChanged();
+		}
+		catch (RuntimeException ex) {
+			handle(ex);
+		}
+	}
+
+	@Command
+	public void delete() {
+		Messagebox.show("Delete this draft?", "Delete", Messagebox.YES | Messagebox.NO, Messagebox.QUESTION, (Event event) -> {
+			if (Messagebox.ON_YES.equals(event.getName())) {
+				try {
+					accountingApiClient.deleteEntry(id, entry.version());
+					entryChanged();
+					view.detach();
+				}
+				catch (RuntimeException ex) {
+					handle(ex);
+				}
+			}
+		});
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void post() {
+		// The backend posts the saved draft, so what is on screen must be what was saved.
+		if (isDirty()) {
+			warn("Save the draft first: it has changes that are not saved");
+			return;
+		}
+		try {
+			show(accountingApiClient.postEntry(id, entry.version()));
+			entryChanged();
+		}
+		catch (RuntimeException ex) {
+			handle(ex);
+		}
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void reverse(@BindingParam("copy") boolean copy) {
+		try {
+			ReverseResultDto result = accountingApiClient.reverseEntry(id, reverseDate, copy);
+			show(accountingApiClient.entry(copy ? result.draftId() : result.reversal().id()));
+			entryChanged();
+		}
+		catch (RuntimeException ex) {
+			handle(ex);
+		}
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void openLinked() {
+		Long linked = entry.reversedBy() != null ? entry.reversedBy() : entry.reversalOf();
+		try {
+			show(accountingApiClient.entry(linked));
+		}
+		catch (RuntimeException ex) {
+			ApiErrors.show(ex);
+		}
+	}
+
+	private void handle(RuntimeException ex) {
+		if ("version-conflict".equals(ApiErrors.code(ex))) {
+			Messagebox.show("Someone else changed this entry. Reload?", "Changed", Messagebox.YES | Messagebox.NO,
+					Messagebox.QUESTION, (Event event) -> {
+						if (Messagebox.ON_YES.equals(event.getName())) {
+							reload();
+						}
+					});
+			return;
+		}
+		ApiErrors.show(ex);
+	}
+
+	private void reload() {
+		try {
+			show(accountingApiClient.entry(id));
+			BindUtils.postNotifyChange(this, "*");
+		}
+		catch (RuntimeException ex) {
+			ApiErrors.show(ex);
+		}
+	}
+
+	private void show(EntryDto loaded) {
+		entry = loaded;
+		id = loaded.id();
+		form = EntryForm.from(loaded, accountsById);
+		showForm();
+		refreshPeriod();
+	}
+
+	private void showForm() {
+		lines = new ListModelList<>(form.getLines(), true);
+		savedSnapshot = entry == null ? "" : form.snapshot();
+	}
+
+	private void refreshPeriod() {
+		LocalDate date = form.getDate();
+		if (date == null) {
+			periodText = "";
+			return;
+		}
+		try {
+			periodText = accountingApiClient.periods(date.getYear()).stream()
+					.filter(period -> period.month() == date.getMonthValue())
+					.map(period -> period.getLabel() + " · " + period.status())
+					.findFirst().orElse("No period for this date");
+		}
+		catch (RuntimeException ex) {
+			periodText = "";
+			ApiErrors.show(ex);
+		}
+	}
+
+	private static void entryChanged() {
+		BindUtils.postGlobalCommand(null, null, "accountingEntryChanged", Collections.emptyMap());
+	}
+
+	private static void warn(String message) {
+		Clients.showNotification(message, "warning", null, "middle_center", 4000);
+	}
+
+	private boolean isDirty() {
+		return !form.snapshot().equals(savedSnapshot);
+	}
+
+	public String getTitle() {
+		if (entry == null) {
+			return "New journal entry";
+		}
+		return (entry.entryNo() == null ? "Draft entry" : entry.entryNo()) + " · " + entry.status();
+	}
+
+	public EntryForm getForm() {
+		return form;
+	}
+
+	public ListModelList<EntryLine> getLines() {
+		return lines;
+	}
+
+	public ListModel<Object> getAccountModel() {
+		return accountModel;
+	}
+
+	public String getPeriodText() {
+		return periodText;
+	}
+
+	public String getTotalsText() {
+		return "Debit " + Idr.format(form.totalDebit()) + " · Credit " + Idr.format(form.totalCredit());
+	}
+
+	public String getBalanceText() {
+		return form.isBalanced() ? "Balanced" : "Difference " + Idr.format(form.difference().abs());
+	}
+
+	public boolean isBalanced() {
+		return form.isBalanced();
+	}
+
+	public boolean isSaved() {
+		return id != null;
+	}
+
+	public boolean isDraft() {
+		return entry == null || "DRAFT".equals(entry.status());
+	}
+
+	public boolean isPosted() {
+		return entry != null && "POSTED".equals(entry.status());
+	}
+
+	public boolean isReadOnly() {
+		return !isDraft() || !canWrite;
+	}
+
+	public boolean isCanWrite() {
+		return canWrite;
+	}
+
+	public boolean isCanPost() {
+		return canPost;
+	}
+
+	public boolean isPosterBlocked() {
+		return entry != null && entry.posterBlocked();
+	}
+
+	public String getLinkText() {
+		if (entry != null && entry.reversedBy() != null) {
+			return "Open the reversal";
+		}
+		return entry != null && entry.reversalOf() != null ? "Open the reversed entry" : "";
+	}
+
+	public LocalDate getReverseDate() {
+		return reverseDate;
+	}
+
+	public void setReverseDate(LocalDate reverseDate) {
+		this.reverseDate = reverseDate;
+	}
+
+}

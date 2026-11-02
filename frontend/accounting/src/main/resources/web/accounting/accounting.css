@@ -1,0 +1,8 @@
+.accounting .card { margin-bottom: 16px; }
+.accounting .amount { text-align: right; }
+.accounting .filters > * { margin-right: 8px; }
+.accounting .inactive { color: #888; font-style: italic; }
+.accounting .banner { display: inline-block; padding: 4px 10px; border-radius: 3px; }
+.accounting .banner-ok { background: #e3f4e3; color: #1d6b1d; }
+.accounting .banner-off { background: #fbe7e7; color: #9a1f1f; }
+.accounting .hint { color: #9a5b00; }
