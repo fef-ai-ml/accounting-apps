@@ -34,6 +34,7 @@ import org.zkoss.zul.Intbox;
 import org.zkoss.zul.Label;
 import org.zkoss.zul.Listcell;
 import org.zkoss.zul.Listitem;
+import org.zkoss.zul.Paging;
 import org.zkoss.zul.Textbox;
 import org.zkoss.zul.Window;
 
@@ -41,6 +42,7 @@ import com.example.ui.accounting.AccountDto;
 import com.example.ui.accounting.AccountRequest;
 import com.example.ui.accounting.AccountingApiClient;
 import com.example.ui.accounting.EntryDto;
+import com.example.ui.accounting.EntryFilter;
 import com.example.ui.accounting.EntryPageDto;
 import com.example.ui.accounting.EntrySummaryDto;
 import com.example.ui.accounting.EntryViewModel;
@@ -328,6 +330,8 @@ class AccountingClickPathTests {
 
 		zk.au("onClick", row.getUuid(), "{}", "onClick", row.getUuid(), "{}");
 		assertThat(entryWindows()).hasSize(1);
+		// The window's id alone keeps the count at 1; without the guard the browser gets this as an alert.
+		assertThat(zk.response).doesNotContain("Not unique");
 		zk.click(row);
 		assertThat(entryWindows()).hasSize(1);
 
@@ -475,6 +479,25 @@ class AccountingClickPathTests {
 	}
 
 	@Test
+	void aRefusedSearchKeepsTheFilterTheListWasLoadedWith() throws Exception {
+		when(api.entries(any())).thenReturn(new EntryPageDto(List.of(new EntrySummaryDto(7L, null, LocalDate.of(2026, 3, 15), "R",
+				"Penjualan", "DRAFT", new BigDecimal("100.00"))), 120, 0, 50));
+		page("journal.zul");
+		Combobox accountBox = zk.all(Combobox.class).get(1);
+		zk.change(accountBox, "kas");
+		zk.click(zk.button("Search"));
+
+		zk.change(accountBox, "nothing like this");
+		zk.click(zk.button("Search"));
+		zk.au("onPaging", zk.all(Paging.class).get(0).getUuid(), "{\"\":1}");
+
+		ArgumentCaptor<EntryFilter> filter = ArgumentCaptor.forClass(EntryFilter.class);
+		verify(api, times(3)).entries(filter.capture());
+		assertThat(filter.getValue().page()).isEqualTo(1);
+		assertThat(filter.getValue().accountId()).isEqualTo(KAS.id());
+	}
+
+	@Test
 	void setupPanelsBeforeAndAfterSetup() throws Exception {
 		when(api.settings()).thenReturn(new SettingsDto(false, true));
 		page("accounts.zul");
@@ -604,6 +627,16 @@ class AccountingClickPathTests {
 
 		assertThat(entryWindows()).isEmpty();
 		assertThat(zk.response).contains("No such entry");
+	}
+
+	@Test
+	void anExpiredLoginWhileOpeningAnEntryLeavesWithoutTheLeaveWarning() throws Exception {
+		when(api.entry(7L)).thenThrow(new OAuth2AuthorizationException(new OAuth2Error("invalid_grant")));
+		page("journal.zul");
+
+		zk.click(zk.all(Listitem.class).get(0));
+
+		assertThat(zk.response).contains("/logout").doesNotContain("Unsaved changes will be lost.");
 	}
 
 	@Test

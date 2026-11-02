@@ -110,6 +110,7 @@ public class EntryViewModel {
 		}
 		catch (RuntimeException ex) {
 			// A blank form here could be mistaken for the entry that failed to load.
+			Clients.confirmClose(null);
 			ApiErrors.show(ex);
 			Events.postEvent(Events.ON_CLOSE, view, null);
 			return;

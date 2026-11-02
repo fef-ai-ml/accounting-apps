@@ -79,16 +79,17 @@ public class JournalViewModel {
 	@Command
 	@NotifyChange({ "entries", "total", "page", "accountText" })
 	public void search() {
-		accountId = null;
+		Long matched = null;
 		if (accountText != null && !accountText.isBlank()) {
 			AccountDto account = AccountMatcher.find(accountText, accounts).orElse(null);
 			if (account == null) {
 				EntryViewModel.warnNoMatch(accountText);
 				return;
 			}
-			accountId = account.id();
+			matched = account.id();
 			accountText = account.getLabel();
 		}
+		accountId = matched;
 		page = 0;
 		load();
 	}

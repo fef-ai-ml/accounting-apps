@@ -102,7 +102,7 @@ Use a private browser window per user, at `http://localhost:8081`:
 | 4 | Log in as `editor`/`editor` | Form and Edit visible, no Delete; creating and editing a task works |
 | 5 | Log in as `admin`/`admin` | Everything visible; deleting a task works |
 | 6 | `curl -i http://localhost:8080/api/tasks` | `401` with `WWW-Authenticate: Bearer` |
-| 7 | Stop the backend, reload the shell | Page renders with an "API error" notification, no stack trace; after restarting the backend and reloading, it works again |
+| 7 | Stop the backend, reload the shell | Page renders with a "The server could not complete the request." notification, no stack trace; after restarting the backend and reloading, it works again |
 | 8 | Restart the shell with `env SERVER_SERVLET_SESSION_TIMEOUT=1m`, log in, wait 2 minutes, click Edit | Page reloads through login (Keycloak may sign you straight back in); no raw HTML or error dialog |
 | 9 | Leave a page idle for more than 5 minutes (access-token lifetime), then act | It still works (the shell refreshes the token silently) |
 | 10 | In the Keycloak admin console (`http://localhost:8180`, `admin`/`admin`) sign out the `editor` session, wait more than 5 minutes, click Save | Sent to `/logout`, then the Keycloak login page |
