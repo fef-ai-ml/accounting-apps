@@ -1,7 +1,7 @@
 # Accounting core (Phase 1): chart of accounts, journal, periods, trial balance, ledger
 
 Date: 2026-10-29
-Status: backend implemented on feat/accounting-core; frontend not started
+Status: implemented on feat/accounting-frontend (backend merged)
 Depends on: `2026-10-29-multi-tenancy-foundation-design.md` (must be merged first)
 
 ## Goal
@@ -53,6 +53,22 @@ Settled during implementation, beyond the plan's list:
 - A reversal cannot be dated before its original (400 `validation`).
 - New codes: 409 `conflict` (unique violation, SQLSTATE 23505), 500 `database-error`; `invariant-violated` is the 500 code for trigger/CHECK rejections (P0001, 23514). Data exceptions (class 22) are 400 `validation`.
 - A `PUT` of an account without `active` keeps the current value; only create defaults it to true.
+
+### Settled by the frontend plan
+
+- `EntryResponse` gains `posterBlocked`, computed for the current user; the hint "You prepared this entry; another user must post it" must not compare display names, and subs stay out of the API.
+- Posting needs a saved draft: Post is refused on screen while the form has unsaved changes, because the backend posts the saved version.
+- The entry form is a modal window, not a page in the shell, so Periods can open it for a blocking draft and `ShellViewModel` stays unchanged.
+- The accounts tree is an indented list, not a ZK `<tree>`.
+- The account combobox binds its text and handles selection through a command rather than `selectedItem`, because a filtered model need not contain the selected account. Text matching no account leaves the line without one, and Save refuses it.
+- CSV cells starting with `=`, `+`, `-`, `@`, tab or carriage return are prefixed with `'` when they are text. Amounts stay numeric, with a dot. Files start with a UTF-8 BOM so Excel reads them correctly.
+- There is no delete button on accounts; deactivating covers it.
+- `ApiErrors` shows the problem `detail` for every 4xx that has one, not only 409 and 422.
+- Each entry line has its own account list (a shared model would show one pick on every row).
+- A failed load closes the entry window.
+- `version-conflict`, `not-draft` and `already-reversed` all offer Reload.
+- Reverse asks for confirmation.
+- A blank year cannot open a year.
 
 ## Architecture
 
