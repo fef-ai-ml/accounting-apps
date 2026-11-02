@@ -26,6 +26,7 @@ import com.example.ui.accounting.EntryPageDto;
 import com.example.ui.accounting.EntrySummaryDto;
 import com.example.ui.accounting.PeriodDto;
 import com.example.ui.accounting.SettingsDto;
+import com.example.ui.accounting.TrialBalanceDto;
 import com.example.ui.common.CurrentUser;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -116,6 +117,16 @@ class AccountingScreensRenderTests {
 				LocalDate.of(2026, 3, 31), "CLOSED", "Ani Accountant")));
 
 		assertThat(render("periods.zul")).contains("Mar 2026", "CLOSED", "Ani Accountant", "Reopen");
+	}
+
+	@Test
+	void reportsRender() throws Exception {
+		when(accountingApiClient.trialBalance(any())).thenReturn(new TrialBalanceDto(LocalDate.of(2026, 3, 31),
+				List.of(new TrialBalanceDto.Row(2L, "1110", "Kas Kecil", "ASSET", new BigDecimal("1000.00"), new BigDecimal("300.00"),
+						new BigDecimal("700.00"))),
+				new BigDecimal("1000.00"), new BigDecimal("300.00"), new BigDecimal("700.00")));
+
+		assertThat(render("reports.zul")).contains("Kas Kecil", "1.000,00", "700,00", "Export CSV", "General ledger");
 	}
 
 }

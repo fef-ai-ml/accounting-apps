@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zk>
+	<style src="~./accounting/accounting.css"/>
+	<div viewModel="@id('vm') @init('com.example.ui.accounting.ReportsViewModel')" sclass="accounting">
+		<tabbox>
+			<tabs>
+				<tab label="Trial balance"/>
+				<tab label="General ledger"/>
+			</tabs>
+			<tabpanels>
+				<tabpanel>
+					<hlayout sclass="filters card" valign="middle">
+						<label value="As of"/>
+						<datebox valueInLocalDate="@bind(vm.asOf)" format="yyyy-MM-dd" width="130px"/>
+						<button label="Run" onClick="@command('runTrialBalance')"/>
+						<button label="Export CSV" iconSclass="z-icon-download" disabled="@load(empty vm.trialRows)" onClick="@command('exportTrialBalance')"/>
+					</hlayout>
+					<listbox model="@load(vm.trialRows)" emptyMessage="No posted entries up to this date" sclass="card">
+						<listhead>
+							<listheader label="Code" width="90px"/>
+							<listheader label="Account"/>
+							<listheader label="Debit" width="150px" align="right"/>
+							<listheader label="Credit" width="150px" align="right"/>
+							<listheader label="Balance" width="150px" align="right"/>
+						</listhead>
+						<template name="model" var="row">
+							<listitem>
+								<listcell label="@load(row.code)"/>
+								<listcell label="@load(row.name)"/>
+								<listcell label="@load(row.debitText)"/>
+								<listcell label="@load(row.creditText)"/>
+								<listcell label="@load(row.balanceText)"/>
+							</listitem>
+						</template>
+					</listbox>
+					<label value="@load(vm.trialTotals)"/>
+				</tabpanel>
+				<tabpanel>
+					<hlayout sclass="filters card" valign="middle">
+						<combobox value="@bind(vm.ledgerAccountText)" model="@load(vm.accountModel)" autodrop="true" placeholder="Search code or name" width="260px">
+							<template name="model"><comboitem label="@load(each.label)"/></template>
+						</combobox>
+						<datebox valueInLocalDate="@bind(vm.ledgerFrom)" format="yyyy-MM-dd" width="130px"/>
+						<datebox valueInLocalDate="@bind(vm.ledgerTo)" format="yyyy-MM-dd" width="130px"/>
+						<button label="Run" onClick="@command('runLedger')"/>
+						<button label="Export CSV" iconSclass="z-icon-download" disabled="@load(vm.ledger eq null)" onClick="@command('exportLedger')"/>
+					</hlayout>
+					<label value="@load(vm.ledgerOpening)"/>
+					<listbox model="@load(vm.ledgerLines)" emptyMessage="No lines in this range" sclass="card">
+						<listhead>
+							<listheader label="Date" width="110px"/>
+							<listheader label="Number" width="150px"/>
+							<listheader label="Description"/>
+							<listheader label="Memo"/>
+							<listheader label="Debit" width="130px" align="right"/>
+							<listheader label="Credit" width="130px" align="right"/>
+							<listheader label="Balance" width="130px" align="right"/>
+						</listhead>
+						<template name="model" var="line">
+							<listitem>
+								<listcell label="@load(line.dateText)"/>
+								<listcell label="@load(line.entryNo)"/>
+								<listcell label="@load(line.description)"/>
+								<listcell label="@load(line.memo)"/>
+								<listcell label="@load(line.debitText)"/>
+								<listcell label="@load(line.creditText)"/>
+								<listcell label="@load(line.runningBalanceText)"/>
+							</listitem>
+						</template>
+					</listbox>
+					<label value="@load(vm.ledgerClosing)"/>
+				</tabpanel>
+			</tabpanels>
+		</tabbox>
+	</div>
+</zk>
