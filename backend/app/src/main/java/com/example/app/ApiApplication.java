@@ -4,6 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
 
+import com.example.accounting.AccountingModule;
 import com.example.iam.IamModule;
 import com.example.task.TaskModule;
 
@@ -12,7 +13,7 @@ import com.example.task.TaskModule;
  * create another app like this one that imports only that module.
  */
 @SpringBootApplication
-@Import({ TaskModule.class, IamModule.class })
+@Import({ TaskModule.class, IamModule.class, AccountingModule.class })
 public class ApiApplication {
 
 	public static void main(String[] args) {
