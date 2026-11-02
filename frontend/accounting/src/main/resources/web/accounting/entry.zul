@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<zk>
-	<style src="~./accounting/accounting.css"/>
-	<window viewModel="@id('vm') @init('com.example.ui.accounting.EntryViewModel')" mode="modal" closable="true"
-		title="@load(vm.title)" width="960px" sclass="accounting">
+<zk xmlns:w="client">
+	<window id="accountingEntryWindow" viewModel="@id('vm') @init('com.example.ui.accounting.EntryViewModel')" mode="modal" closable="true"
+		title="@load(vm.title)" width="1120px" sclass="accounting" onClose="@command('closing', event=event)">
+		<style src="~./accounting/accounting.css"/>
 
 		<grid sclass="card">
 			<columns>
@@ -31,9 +31,9 @@
 		<grid model="@load(vm.lines)" sclass="card">
 			<columns>
 				<column label="Account"/>
-				<column label="Memo" width="190px"/>
-				<column label="Debit" width="150px"/>
-				<column label="Credit" width="150px"/>
+				<column label="Memo" width="150px"/>
+				<column label="Debit" width="250px"/>
+				<column label="Credit" width="250px"/>
 				<column label="" width="130px"/>
 			</columns>
 			<template name="model" var="line">
@@ -44,13 +44,13 @@
 						<template name="model"><comboitem label="@load(each.label)"/></template>
 					</combobox>
 					<textbox value="@bind(line.memo)" maxlength="200" hflex="1" readonly="@load(vm.readOnly)"/>
-					<decimalbox value="@load(line.debit)" format="#,##0.00" locale="id" constraint="no negative" hflex="1"
+					<decimalbox value="@load(line.debit)" format="#,##0.00" locale="id" constraint="no negative" hflex="1" sclass="amount"
 						disabled="@load(vm.readOnly)" onChange="@command('setDebit', line=line, amount=self.value)"/>
-					<decimalbox value="@load(line.credit)" format="#,##0.00" locale="id" constraint="no negative" hflex="1"
+					<decimalbox value="@load(line.credit)" format="#,##0.00" locale="id" constraint="no negative" hflex="1" sclass="amount"
 						disabled="@load(vm.readOnly)" onChange="@command('setCredit', line=line, amount=self.value)"/>
 					<hlayout visible="@load(not vm.readOnly)">
-						<button label="Balance" onClick="@command('balance', line=line)"/>
-						<button iconSclass="z-icon-times" onClick="@command('removeLine', line=line)"/>
+						<button label="Balance" tabindex="-1" onClick="@command('balance', line=line)"/>
+						<button iconSclass="z-icon-times" tabindex="-1" onClick="@command('removeLine', line=line)"/>
 					</hlayout>
 				</row>
 			</template>
@@ -59,20 +59,24 @@
 		<hlayout sclass="card" valign="middle">
 			<button label="Add line" iconSclass="z-icon-plus" visible="@load(not vm.readOnly)" onClick="@command('addLine')"/>
 			<label value="@load(vm.totalsText)"/>
-			<label value="@load(vm.balanceText)" sclass="@load(vm.balanced ? 'banner banner-ok' : 'banner banner-off')"/>
+			<label value="@load(vm.balanceText)" visible="@load(not empty vm.balanceText)" sclass="@load(vm.balanced ? 'banner banner-ok' : 'banner banner-off')"/>
 		</hlayout>
 
 		<hlayout valign="middle">
-			<button label="Save draft" iconSclass="z-icon-save" visible="@load(vm.draft and vm.canWrite)" onClick="@command('save')"/>
-			<button label="Delete" visible="@load(vm.saved and vm.draft and vm.canWrite)" onClick="@command('delete')"/>
-			<button label="Post" iconSclass="z-icon-check" visible="@load(vm.saved and vm.draft and vm.canPost)"
-				disabled="@load(not vm.balanced or vm.posterBlocked)" onClick="@command('post')"/>
+			<button label="Save draft" iconSclass="z-icon-save" visible="@load(vm.draft and vm.canWrite)" autodisable="self"
+				w:onClick="if (jq('.z-window input[class*=-invalid]').length) event.stop();" onClick="@command('save')"/>
+			<button label="Delete" visible="@load(vm.saved and vm.draft and vm.canWrite)" autodisable="self" onClick="@command('delete')"/>
+			<button label="Post" iconSclass="z-icon-check" visible="@load(vm.saved and vm.draft and vm.canPost)" autodisable="self"
+				disabled="@load(not vm.balanced or vm.posterBlocked)"
+				w:onClick="if (jq('.z-window input[class*=-invalid]').length) event.stop();" onClick="@command('post')"/>
 			<label value="You prepared this entry; another user must post it" sclass="hint" visible="@load(vm.posterBlocked)"/>
 
 			<datebox valueInLocalDate="@bind(vm.reverseDate)" format="yyyy-MM-dd" placeholder="Reversal date"
 				visible="@load(vm.posted and vm.canPost)" width="130px"/>
-			<button label="Reverse" visible="@load(vm.posted and vm.canPost)" onClick="@command('reverse', copy=false)"/>
-			<button label="Reverse &amp; copy to draft" visible="@load(vm.posted and vm.canPost)" onClick="@command('reverse', copy=true)"/>
+			<button label="Reverse" visible="@load(vm.posted and vm.canPost)" autodisable="self"
+				w:onClick="if (jq('.z-window input[class*=-invalid]').length) event.stop();" onClick="@command('reverse', copy=false)"/>
+			<button label="Reverse &amp; copy to draft" visible="@load(vm.posted and vm.canPost)" autodisable="self"
+				w:onClick="if (jq('.z-window input[class*=-invalid]').length) event.stop();" onClick="@command('reverse', copy=true)"/>
 
 			<button label="@load(vm.linkText)" visible="@load(not empty vm.linkText)" onClick="@command('openLinked')"/>
 		</hlayout>

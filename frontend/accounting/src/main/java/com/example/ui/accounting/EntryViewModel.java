@@ -21,6 +21,7 @@ import org.zkoss.bind.annotation.ContextType;
 import org.zkoss.bind.annotation.ExecutionArgParam;
 import org.zkoss.bind.annotation.Init;
 import org.zkoss.bind.annotation.NotifyChange;
+import org.zkoss.xml.XMLs;
 import org.zkoss.zk.ui.Component;
 import org.zkoss.zk.ui.Executions;
 import org.zkoss.zk.ui.event.Event;
@@ -45,6 +46,9 @@ public class EntryViewModel {
 
 	private static final int ACCOUNT_CHOICES = 50;
 
+	/** Must match the window's id in entry.zul. */
+	private static final String WINDOW_ID = "accountingEntryWindow";
+
 	/** Errors that mean someone else changed the entry, so the screen shows stale buttons. */
 	private static final Set<String> STALE = Set.of("version-conflict", "not-draft", "already-reversed");
 
@@ -62,7 +66,7 @@ public class EntryViewModel {
 
 	private ListModelList<EntryLine> lines = new ListModelList<>();
 
-	private String savedSnapshot = "";
+	private String savedSnapshot = form.snapshot();
 
 	private String periodText = "";
 
@@ -80,6 +84,10 @@ public class EntryViewModel {
 
 	/** Opens the entry in a modal window; {@code entryId} null starts a new draft. */
 	public static void open(Long entryId) {
+		// A double click on a row arrives as two commands.
+		if (Executions.getCurrent().getDesktop().getPages().stream().anyMatch(page -> page.hasFellow(WINDOW_ID))) {
+			return;
+		}
 		Map<String, Object> args = new HashMap<>();
 		args.put("entryId", entryId);
 		Executions.createComponents("~./accounting/entry.zul", null, args);
@@ -88,6 +96,7 @@ public class EntryViewModel {
 	@Init
 	public void init(@ExecutionArgParam("entryId") Long entryId, @ContextParam(ContextType.VIEW) Component view) {
 		this.view = view;
+		Clients.confirmClose("Unsaved changes will be lost.");
 		try {
 			canWrite = currentUser.can("accounting:write");
 			canPost = currentUser.can("accounting:post");
@@ -109,51 +118,77 @@ public class EntryViewModel {
 		refreshPeriod();
 	}
 
+	/** The window's X. A dirty form asks; the event is stopped either way so the window has one way out, {@link #close}. */
 	@Command
-	@NotifyChange("*")
+	public void closing(@BindingParam("event") Event closeEvent) {
+		closeEvent.stopPropagation();
+		if (!isDirty()) {
+			close();
+			return;
+		}
+		Messagebox.show("Discard unsaved changes?", "Close", Messagebox.YES | Messagebox.NO, Messagebox.QUESTION, (Event event) -> {
+			if (Messagebox.ON_YES.equals(event.getName())) {
+				close();
+			}
+		});
+	}
+
+	private void close() {
+		Clients.confirmClose(null);
+		view.detach();
+	}
+
+	@Command
+	@NotifyChange("periodText")
 	public void setDate(@BindingParam("date") LocalDate date) {
 		form.setDate(date);
 		refreshPeriod();
 	}
 
 	@Command
-	@NotifyChange("*")
+	@NotifyChange({ "totalsText", "balanceText", "balanced" })
 	public void addLine() {
 		lines.add(new EntryLine());
 	}
 
 	@Command
-	@NotifyChange("*")
+	@NotifyChange({ "totalsText", "balanceText", "balanced" })
 	public void removeLine(@BindingParam("line") EntryLine line) {
 		lines.remove(line);
 	}
 
 	@Command
-	@NotifyChange("*")
+	@NotifyChange({ "totalsText", "balanceText", "balanced" })
 	public void setDebit(@BindingParam("line") EntryLine line, @BindingParam("amount") BigDecimal amount) {
 		line.setDebit(amount);
-		BindUtils.postNotifyChange(line, "*");
+		BindUtils.postNotifyChange(line, "debit", "credit");
 	}
 
 	@Command
-	@NotifyChange("*")
+	@NotifyChange({ "totalsText", "balanceText", "balanced" })
 	public void setCredit(@BindingParam("line") EntryLine line, @BindingParam("amount") BigDecimal amount) {
 		line.setCredit(amount);
-		BindUtils.postNotifyChange(line, "*");
+		BindUtils.postNotifyChange(line, "debit", "credit");
 	}
 
+	/** Picking on the last line appends a blank one: the only way into a new row with the keyboard. */
 	@Command
-	@NotifyChange("*")
 	public void typedAccount(@BindingParam("line") EntryLine line, @BindingParam("text") String text) {
-		line.pickByLabel(text, options);
-		BindUtils.postNotifyChange(line, "*");
+		boolean found = line.pickByLabel(text, options);
+		BindUtils.postNotifyChange(line, "accountLabel");
+		if (found && lines.indexOf(line) == lines.size() - 1) {
+			lines.add(new EntryLine());
+		}
+		else if (!found && text != null && !text.isBlank()) {
+			warnNoMatch(text);
+		}
 	}
 
 	@Command
-	@NotifyChange("*")
+	@NotifyChange({ "totalsText", "balanceText", "balanced" })
 	public void balance(@BindingParam("line") EntryLine line) {
 		form.balance(line);
-		BindUtils.postNotifyChange(line, "*");
+		BindUtils.postNotifyChange(line, "debit", "credit");
 	}
 
 	@Command
@@ -176,12 +211,15 @@ public class EntryViewModel {
 
 	@Command
 	public void delete() {
+		// The answer comes later; it must apply to what was on screen when the question was asked.
+		long entryId = id;
+		long version = entry.version();
 		Messagebox.show("Delete this draft?", "Delete", Messagebox.YES | Messagebox.NO, Messagebox.QUESTION, (Event event) -> {
 			if (Messagebox.ON_YES.equals(event.getName())) {
 				try {
-					accountingApiClient.deleteEntry(id, entry.version());
+					accountingApiClient.deleteEntry(entryId, version);
 					entryChanged();
-					view.detach();
+					close();
 				}
 				catch (RuntimeException ex) {
 					handle(ex);
@@ -194,7 +232,7 @@ public class EntryViewModel {
 	@NotifyChange("*")
 	public void post() {
 		// The backend posts the saved draft, so what is on screen must be what was saved.
-		if (isDirty()) {
+		if (entry == null || isDirty()) {
 			warn("Save the draft first: it has changes that are not saved");
 			return;
 		}
@@ -209,11 +247,15 @@ public class EntryViewModel {
 
 	@Command
 	public void reverse(@BindingParam("copy") boolean copy) {
-		Messagebox.show("Post a reversal of " + entry.entryNo() + "? This cannot be undone.", "Reverse",
+		// The answer comes later; a Yes must reverse the entry it was asked about, not the reversal now on screen.
+		long entryId = id;
+		LocalDate date = reverseDate;
+		Messagebox.show("Post a reversal of " + entry.entryNo() + " dated " + (date == null ? "today" : date)
+				+ (copy ? " and copy it to a new draft" : "") + "? This cannot be undone.", "Reverse",
 				Messagebox.YES | Messagebox.NO, Messagebox.QUESTION, (Event event) -> {
 					if (Messagebox.ON_YES.equals(event.getName())) {
 						try {
-							ReverseResultDto result = accountingApiClient.reverseEntry(id, reverseDate, copy);
+							ReverseResultDto result = accountingApiClient.reverseEntry(entryId, date, copy);
 							entryChanged();
 							show(accountingApiClient.entry(copy ? result.draftId() : result.reversal().id()));
 						}
@@ -238,6 +280,14 @@ public class EntryViewModel {
 	}
 
 	private void handle(RuntimeException ex) {
+		if (ApiErrors.classify(ex) == ApiErrors.Kind.REAUTHENTICATE) {
+			Messagebox.show("Your login has expired. This entry was not saved.", "Login expired", Messagebox.OK, Messagebox.EXCLAMATION,
+					(Event event) -> {
+						Clients.confirmClose(null);
+						ApiErrors.show(ex);
+					});
+			return;
+		}
 		if (STALE.contains(ApiErrors.code(ex))) {
 			Messagebox.show("Someone else changed this entry. Reload?", "Changed", Messagebox.YES | Messagebox.NO,
 					Messagebox.QUESTION, (Event event) -> {
@@ -269,13 +319,14 @@ public class EntryViewModel {
 		entry = loaded;
 		id = loaded.id();
 		form = EntryForm.from(loaded, accountsById);
+		reverseDate = LocalDate.now(JAKARTA);
 		showForm();
 		refreshPeriod();
 	}
 
 	private void showForm() {
 		lines = new ListModelList<>(form.getLines(), true);
-		savedSnapshot = entry == null ? "" : form.snapshot();
+		savedSnapshot = form.snapshot();
 	}
 
 	private void refreshPeriod() {
@@ -302,6 +353,11 @@ public class EntryViewModel {
 
 	private static void warn(String message) {
 		Clients.showNotification(message, "warning", null, "middle_center", 4000);
+	}
+
+	/** Notifications render HTML, and this one quotes what was typed. */
+	static void warnNoMatch(String text) {
+		warn("No single account matches \"" + XMLs.escapeXML(text.strip()) + "\"");
 	}
 
 	private boolean isDirty() {
@@ -341,7 +397,11 @@ public class EntryViewModel {
 	}
 
 	public String getBalanceText() {
-		return form.isBalanced() ? "Balanced" : "Difference " + Idr.format(form.difference().abs());
+		if (form.isBalanced()) {
+			return "Balanced";
+		}
+		// Not balanced with no difference means nothing has been entered yet.
+		return form.difference().signum() == 0 ? "" : "Difference " + Idr.format(form.difference().abs());
 	}
 
 	public boolean isBalanced() {

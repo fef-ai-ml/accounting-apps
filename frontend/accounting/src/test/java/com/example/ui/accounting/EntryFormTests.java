@@ -122,12 +122,23 @@ class EntryFormTests {
 	void textMatchingNoAccountLeavesTheLineWithoutOne() {
 		EntryLine line = line(CASH, "100", null);
 
-		line.pickByLabel("nothing like this", List.of(CASH, SALES));
+		assertThat(line.pickByLabel("nothing like this", List.of(CASH, SALES))).isFalse();
 		assertThat(line.getAccount()).isNull();
 		assertThat(line.getAccountLabel()).isEmpty();
 
-		line.pickByLabel("4100 Penjualan", List.of(CASH, SALES));
+		assertThat(line.pickByLabel("4100 Penjualan", List.of(CASH, SALES))).isTrue();
 		assertThat(line.getAccount()).isEqualTo(SALES);
+	}
+
+	@Test
+	void aNameFindsTheAccountAndAmbiguousTextClearsTheOldOne() {
+		EntryLine line = line(CASH, "100", null);
+
+		assertThat(line.pickByLabel("penjualan", List.of(CASH, SALES))).isTrue();
+		assertThat(line.getAccount()).isEqualTo(SALES);
+
+		assertThat(line.pickByLabel("1", List.of(CASH, SALES))).isFalse();
+		assertThat(line.getAccount()).isNull();
 	}
 
 	@Test
@@ -143,6 +154,13 @@ class EntryFormTests {
 		EntryForm noDate = form(line(CASH, "1", null));
 		noDate.setDate(null);
 		assertThat(noDate.problem()).isEqualTo("Enter a date");
+	}
+
+	@Test
+	void anAmountWithMoreThanTwoDecimalsIsAProblem() {
+		assertThat(form(new EntryLine(), line(CASH, "100.004", null)).problem()).isEqualTo("Line 2: amounts have at most 2 decimals");
+		assertThat(form(line(CASH, null, "0.001")).problem()).isEqualTo("Line 1: amounts have at most 2 decimals");
+		assertThat(form(line(CASH, "100.000", null), line(SALES, null, "100.10")).problem()).isNull();
 	}
 
 	@Test

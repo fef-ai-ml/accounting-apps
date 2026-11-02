@@ -26,9 +26,10 @@ public class EntryLine {
 		return account == null ? "" : account.getLabel();
 	}
 
-	/** Text matching no account leaves the line without one, so Save refuses it instead of keeping the old account. */
-	public void pickByLabel(String text, List<AccountDto> options) {
-		account = options.stream().filter(option -> option.getLabel().equals(text)).findFirst().orElse(null);
+	/** Text matching no single account leaves the line without one, so Save refuses it instead of keeping the old account. */
+	public boolean pickByLabel(String text, List<AccountDto> options) {
+		account = AccountMatcher.find(text, options).orElse(null);
+		return account != null;
 	}
 
 	public BigDecimal getDebit() {

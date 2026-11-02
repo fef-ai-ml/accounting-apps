@@ -99,6 +99,9 @@ public class EntryForm {
 			if (line.getDebit() == null && line.getCredit() == null) {
 				return "Line " + (i + 1) + ": enter a debit or a credit";
 			}
+			if (moreThanTwoDecimals(line.getDebit()) || moreThanTwoDecimals(line.getCredit())) {
+				return "Line " + (i + 1) + ": amounts have at most 2 decimals";
+			}
 		}
 		return null;
 	}
@@ -149,6 +152,10 @@ public class EntryForm {
 
 	private static BigDecimal sum(List<EntryLine> lines, Function<EntryLine, BigDecimal> side) {
 		return lines.stream().map(side).filter(amount -> amount != null).reduce(BigDecimal.ZERO, BigDecimal::add);
+	}
+
+	private static boolean moreThanTwoDecimals(BigDecimal amount) {
+		return amount != null && amount.stripTrailingZeros().scale() > 2;
 	}
 
 	private static String plain(BigDecimal amount) {
