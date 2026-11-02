@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<?link rel="stylesheet" type="text/css" href="~./accounting/accounting.css"?>
 <zk>
+	<style src="~./accounting/accounting.css"/>
 	<div viewModel="@id('vm') @init('com.example.ui.accounting.AccountsViewModel')" sclass="accounting">
 
 		<groupbox mold="3d" sclass="card" visible="@load(not vm.initialized)">

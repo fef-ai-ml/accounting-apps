@@ -8,9 +8,11 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.springframework.web.client.HttpClientErrorException;
 import org.zkoss.bind.BindUtils;
 import org.zkoss.bind.annotation.BindingParam;
 import org.zkoss.bind.annotation.Command;
@@ -22,6 +24,7 @@ import org.zkoss.bind.annotation.NotifyChange;
 import org.zkoss.zk.ui.Component;
 import org.zkoss.zk.ui.Executions;
 import org.zkoss.zk.ui.event.Event;
+import org.zkoss.zk.ui.event.Events;
 import org.zkoss.zk.ui.select.annotation.VariableResolver;
 import org.zkoss.zk.ui.select.annotation.WireVariable;
 import org.zkoss.zk.ui.util.Clients;
@@ -41,6 +44,9 @@ public class EntryViewModel {
 	private static final Clock JAKARTA = Clock.system(ZoneId.of("Asia/Jakarta"));
 
 	private static final int ACCOUNT_CHOICES = 50;
+
+	/** Errors that mean someone else changed the entry, so the screen shows stale buttons. */
+	private static final Set<String> STALE = Set.of("version-conflict", "not-draft", "already-reversed");
 
 	@WireVariable
 	private AccountingApiClient accountingApiClient;
@@ -70,8 +76,6 @@ public class EntryViewModel {
 
 	private Map<Long, AccountDto> accountsById = Map.of();
 
-	private ListModel<Object> accountModel = new ListModelList<>();
-
 	private Component view;
 
 	/** Opens the entry in a modal window; {@code entryId} null starts a new draft. */
@@ -90,14 +94,16 @@ public class EntryViewModel {
 			List<AccountDto> accounts = accountingApiClient.accounts();
 			accountsById = accounts.stream().collect(Collectors.toMap(AccountDto::id, Function.identity()));
 			options = accounts.stream().filter(account -> account.postable() && account.active()).toList();
-			accountModel = ListModels.toListSubModel(new ListModelList<Object>(options), new AccountMatcher(), ACCOUNT_CHOICES);
 			if (entryId != null) {
 				show(accountingApiClient.entry(entryId));
 				return;
 			}
 		}
 		catch (RuntimeException ex) {
+			// A blank form here could be mistaken for the entry that failed to load.
 			ApiErrors.show(ex);
+			Events.postEvent(Events.ON_CLOSE, view, null);
+			return;
 		}
 		showForm();
 		refreshPeriod();
@@ -202,16 +208,21 @@ public class EntryViewModel {
 	}
 
 	@Command
-	@NotifyChange("*")
 	public void reverse(@BindingParam("copy") boolean copy) {
-		try {
-			ReverseResultDto result = accountingApiClient.reverseEntry(id, reverseDate, copy);
-			show(accountingApiClient.entry(copy ? result.draftId() : result.reversal().id()));
-			entryChanged();
-		}
-		catch (RuntimeException ex) {
-			handle(ex);
-		}
+		Messagebox.show("Post a reversal of " + entry.entryNo() + "? This cannot be undone.", "Reverse",
+				Messagebox.YES | Messagebox.NO, Messagebox.QUESTION, (Event event) -> {
+					if (Messagebox.ON_YES.equals(event.getName())) {
+						try {
+							ReverseResultDto result = accountingApiClient.reverseEntry(id, reverseDate, copy);
+							entryChanged();
+							show(accountingApiClient.entry(copy ? result.draftId() : result.reversal().id()));
+						}
+						catch (RuntimeException ex) {
+							handle(ex);
+						}
+						BindUtils.postNotifyChange(this, "*");
+					}
+				});
 	}
 
 	@Command
@@ -227,7 +238,7 @@ public class EntryViewModel {
 	}
 
 	private void handle(RuntimeException ex) {
-		if ("version-conflict".equals(ApiErrors.code(ex))) {
+		if (STALE.contains(ApiErrors.code(ex))) {
 			Messagebox.show("Someone else changed this entry. Reload?", "Changed", Messagebox.YES | Messagebox.NO,
 					Messagebox.QUESTION, (Event event) -> {
 						if (Messagebox.ON_YES.equals(event.getName())) {
@@ -242,10 +253,15 @@ public class EntryViewModel {
 	private void reload() {
 		try {
 			show(accountingApiClient.entry(id));
+			entryChanged();
 			BindUtils.postNotifyChange(this, "*");
 		}
 		catch (RuntimeException ex) {
 			ApiErrors.show(ex);
+			if (ex instanceof HttpClientErrorException.NotFound) {
+				entryChanged();
+				Events.postEvent(Events.ON_CLOSE, view, null);
+			}
 		}
 	}
 
@@ -307,8 +323,13 @@ public class EntryViewModel {
 		return lines;
 	}
 
-	public ListModel<Object> getAccountModel() {
-		return accountModel;
+	/** One model per combobox: sub-models share their selection with the model behind them. */
+	public ListModel<Object> getNewAccountModel() {
+		return accountModel(options);
+	}
+
+	static ListModel<Object> accountModel(List<AccountDto> options) {
+		return ListModels.toListSubModel(new ListModelList<Object>(options), new AccountMatcher(), ACCOUNT_CHOICES);
 	}
 
 	public String getPeriodText() {

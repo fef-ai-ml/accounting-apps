@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<?link rel="stylesheet" type="text/css" href="~./accounting/accounting.css"?>
 <zk>
+	<style src="~./accounting/accounting.css"/>
 	<window viewModel="@id('vm') @init('com.example.ui.accounting.EntryViewModel')" mode="modal" closable="true"
 		title="@load(vm.title)" width="960px" sclass="accounting">
 
@@ -38,7 +38,7 @@
 			</columns>
 			<template name="model" var="line">
 				<row>
-					<combobox value="@load(line.accountLabel)" model="@load(vm.accountModel)" autodrop="true" hflex="1"
+					<combobox value="@load(line.accountLabel)" model="@init(vm.newAccountModel)" autodrop="true" hflex="1"
 						disabled="@load(vm.readOnly)" placeholder="Search code or name"
 						onChange="@command('typedAccount', line=line, text=self.value)">
 						<template name="model"><comboitem label="@load(each.label)"/></template>

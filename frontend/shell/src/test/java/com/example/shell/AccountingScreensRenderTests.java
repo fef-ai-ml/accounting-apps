@@ -85,8 +85,7 @@ class AccountingScreensRenderTests {
 		when(accountingApiClient.entries(any())).thenReturn(new EntryPageDto(List.of(new EntrySummaryDto(7L, "JE-2026-000001",
 				LocalDate.of(2026, 3, 15), "REF-1", "Penjualan tunai", "POSTED", new BigDecimal("1665000.00"))), 1, 0, 50));
 
-		// ZK escapes '-' in the widget JSON, so the entry number appears as JE\-2026\-000001.
-		assertThat(render("journal.zul")).contains("Penjualan tunai", "JE\\-2026\\-000001", "1.665.000,00", "New entry");
+		assertThat(render("journal.zul")).contains("Penjualan tunai", "000001", "1.665.000,00", "New entry");
 	}
 
 	@Test

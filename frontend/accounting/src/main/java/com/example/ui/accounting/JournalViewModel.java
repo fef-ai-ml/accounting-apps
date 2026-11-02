@@ -102,10 +102,15 @@ public class JournalViewModel {
 				.findFirst().orElse(null);
 		try {
 			EntryPageDto result = accountingApiClient.entries(new EntryFilter(from, to, status, accountId, q, page, PAGE_SIZE));
+			if (result.items().isEmpty() && page > 0) {
+				page = (int) Math.max(0, (result.total() - 1) / PAGE_SIZE);
+				result = accountingApiClient.entries(new EntryFilter(from, to, status, accountId, q, page, PAGE_SIZE));
+			}
 			entries = result.items();
 			total = result.total();
 		}
 		catch (RuntimeException ex) {
+			page = 0;
 			entries = List.of();
 			total = 0;
 			ApiErrors.show(ex);

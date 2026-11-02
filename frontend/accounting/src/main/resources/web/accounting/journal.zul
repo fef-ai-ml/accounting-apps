@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<?link rel="stylesheet" type="text/css" href="~./accounting/accounting.css"?>
 <zk>
+	<style src="~./accounting/accounting.css"/>
 	<div viewModel="@id('vm') @init('com.example.ui.accounting.JournalViewModel')" sclass="accounting">
 		<hlayout sclass="filters card">
 			<datebox valueInLocalDate="@bind(vm.from)" format="yyyy-MM-dd" placeholder="From" width="120px"/>
