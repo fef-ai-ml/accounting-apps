@@ -125,8 +125,10 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
 - Verified 2026-10-28 by hand against Keycloak 26.8.1 on the home-lab (README "Manual end-to-end check" rows 1–6):
   login redirect, viewer/editor/admin permissions in the UI, logout back to the Keycloak login page, 401 + Bearer from
   the API.
-- Not yet verified by hand: README checklist rows 7–14 (backend down, ZK session timeout, silent token refresh,
-  Keycloak session ended, and the multi-tenancy rows 11–14).
+- Verified 2026-11-02 by hand on the home-lab (rows 11–14): `acme-admin` sees none of demo's tasks, a suspended tenant
+  and a user in no organization see "no access", tasks from before the upgrade still show for demo users.
+- Not yet verified by hand: README checklist rows 7–10 (backend down, ZK session timeout, silent token refresh,
+  Keycloak session ended).
 - Not built yet: see "Follow-ups" in `docs/superpowers/specs/2026-10-28-auth-keycloak-iam-design.md` (admin UI for
   role permissions, REST PermissionResolver for split services, production Keycloak, ...), pagination, a second
   example module, ArchUnit/Spring Modulith boundary tests.
