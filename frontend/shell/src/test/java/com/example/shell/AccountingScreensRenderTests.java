@@ -24,6 +24,7 @@ import com.example.ui.accounting.AccountDto;
 import com.example.ui.accounting.AccountingApiClient;
 import com.example.ui.accounting.EntryPageDto;
 import com.example.ui.accounting.EntrySummaryDto;
+import com.example.ui.accounting.SettingsDto;
 import com.example.ui.common.CurrentUser;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -91,6 +92,21 @@ class AccountingScreensRenderTests {
 	@Test
 	void aNewEntryFormRenders() throws Exception {
 		assertThat(render("entry.zul")).contains("Save draft", "Debit", "Credit");
+	}
+
+	@Test
+	void accountsBeforeSetupOfferTheTemplate() throws Exception {
+		when(accountingApiClient.settings()).thenReturn(new SettingsDto(false, true));
+		when(accountingApiClient.accounts()).thenReturn(List.of());
+
+		assertThat(render("accounts.zul")).contains("Initialize from template");
+	}
+
+	@Test
+	void accountsAfterSetupShowTheTreeAndTheSetting() throws Exception {
+		when(accountingApiClient.settings()).thenReturn(new SettingsDto(true, true));
+
+		assertThat(render("accounts.zul")).contains("Kas Kecil", "Aset Lancar", "Require a different user to post entries");
 	}
 
 }
