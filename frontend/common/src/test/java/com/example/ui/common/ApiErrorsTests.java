@@ -1,5 +1,7 @@
 package com.example.ui.common;
 
+import java.nio.charset.StandardCharsets;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -40,6 +42,38 @@ class ApiErrorsTests {
 		assertThat(ApiErrors.classify(HttpServerErrorException.create(HttpStatus.INTERNAL_SERVER_ERROR, "boom",
 				new HttpHeaders(), new byte[0], null))).isEqualTo(Kind.OTHER);
 		assertThat(ApiErrors.classify(new ResourceAccessException("Connection refused"))).isEqualTo(Kind.OTHER);
+	}
+
+	private static HttpClientErrorException clientError(HttpStatus status, String body) {
+		return HttpClientErrorException.create(status, status.getReasonPhrase(), new HttpHeaders(),
+				body.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+	}
+
+	@Test
+	void aProblemsDetailAndCodeAreShown() {
+		RuntimeException ex = clientError(HttpStatus.CONFLICT,
+				"{\"detail\": \"Someone else changed this entry\", \"code\": \"version-conflict\"}");
+
+		assertThat(ApiErrors.code(ex)).isEqualTo("version-conflict");
+		assertThat(ApiErrors.message(ex)).isEqualTo("Someone else changed this entry");
+	}
+
+	@Test
+	void aResponseThatIsNotAProblemFallsBackToTheGenericMessage() {
+		for (String body : new String[] { "<html>Bad gateway</html>", "", "[1, 2]", "{\"detail\": \"\"}" }) {
+			RuntimeException ex = clientError(HttpStatus.BAD_REQUEST, body);
+
+			assertThat(ApiErrors.code(ex)).isEmpty();
+			assertThat(ApiErrors.message(ex)).startsWith("API error: ");
+		}
+	}
+
+	@Test
+	void anErrorThatIsNotAClientErrorHasNoCode() {
+		RuntimeException ex = new ResourceAccessException("Connection refused");
+
+		assertThat(ApiErrors.code(ex)).isEmpty();
+		assertThat(ApiErrors.message(ex)).isEqualTo("API error: Connection refused");
 	}
 
 }

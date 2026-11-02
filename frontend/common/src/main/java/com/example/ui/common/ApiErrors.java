@@ -7,6 +7,10 @@ import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.web.client.HttpClientErrorException;
 import org.zkoss.zk.ui.Executions;
 import org.zkoss.zk.ui.util.Clients;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.MissingNode;
 
 /** How a failed backend call is shown to the user. View models call {@link #show} from their catch blocks. */
 public final class ApiErrors {
@@ -43,6 +47,29 @@ public final class ApiErrors {
 		return null;
 	}
 
+	/** The stable {@code code} of an RFC 9457 problem response, or empty. */
+	public static String code(RuntimeException ex) {
+		return problem(ex).path("code").asString("");
+	}
+
+	/** What to tell the user: the problem's {@code detail} when the API gave one. */
+	public static String message(RuntimeException ex) {
+		String detail = problem(ex).path("detail").asString("");
+		return detail.isBlank() ? "API error: " + ex.getMessage() : detail;
+	}
+
+	private static JsonNode problem(RuntimeException ex) {
+		if (ex instanceof HttpClientErrorException clientError) {
+			try {
+				return JsonMapper.shared().readTree(clientError.getResponseBodyAsString());
+			}
+			catch (JacksonException notJson) {
+				return MissingNode.getInstance();
+			}
+		}
+		return MissingNode.getInstance();
+	}
+
 	/** Must be called while handling a ZK event (a view model command or {@code @Init}). */
 	public static void show(RuntimeException ex) {
 		switch (classify(ex)) {
@@ -58,8 +85,14 @@ public final class ApiErrors {
 				Executions.sendRedirect("/logout");
 			}
 			case OTHER -> {
-				log.error("API call failed", ex);
-				Clients.showNotification("API error: " + ex.getMessage(), "error", null, "middle_center", 4000);
+				if (code(ex).isEmpty()) {
+					log.error("API call failed", ex);
+					Clients.showNotification(message(ex), "error", null, "middle_center", 4000);
+				}
+				else {
+					log.info("API refused the request: {}", ex.getMessage());
+					Clients.showNotification(message(ex), "warning", null, "middle_center", 5000);
+				}
 			}
 		}
 	}

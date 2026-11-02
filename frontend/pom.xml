@@ -23,6 +23,7 @@
 	<modules>
 		<module>common</module>
 		<module>task</module>
+		<module>accounting</module>
 		<module>shell</module>
 	</modules>
 </project>
