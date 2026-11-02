@@ -73,11 +73,12 @@ public class ReportsViewModel {
 	@Command
 	@NotifyChange("*")
 	public void runLedger() {
-		AccountDto account = accounts.stream().filter(option -> option.getLabel().equals(ledgerAccountText)).findFirst().orElse(null);
+		AccountDto account = AccountMatcher.find(ledgerAccountText, accounts).orElse(null);
 		if (account == null || ledgerFrom == null || ledgerTo == null) {
 			Clients.showNotification("Choose an account and a date range", "warning", null, "middle_center", 3000);
 			return;
 		}
+		ledgerAccountText = account.getLabel();
 		try {
 			ledger = accountingApiClient.generalLedger(account.id(), ledgerFrom, ledgerTo);
 		}
@@ -89,8 +90,7 @@ public class ReportsViewModel {
 
 	@Command
 	public void exportLedger() {
-		Filedownload.save(Csv.generalLedger(ledger), CSV,
-				"general-ledger-" + ledger.accountCode() + "-" + ledger.from() + "-" + ledger.to() + ".csv");
+		Filedownload.save(Csv.generalLedger(ledger), CSV, Csv.generalLedgerFileName(ledger));
 	}
 
 	private void loadTrialBalance() {
@@ -109,6 +109,16 @@ public class ReportsViewModel {
 
 	public void setAsOf(LocalDate asOf) {
 		this.asOf = asOf;
+	}
+
+	/** From the response, not the inputs: the input box may have changed since the report ran. */
+	public String getTrialHeading() {
+		return trial == null ? "" : "As of " + trial.asOf();
+	}
+
+	/** From the response, not the inputs: the input boxes may have changed since the report ran. */
+	public String getLedgerHeading() {
+		return ledger == null ? "" : ledger.accountCode() + " " + ledger.accountName() + ", " + ledger.from() + " to " + ledger.to();
 	}
 
 	public List<TrialBalanceDto.Row> getTrialRows() {

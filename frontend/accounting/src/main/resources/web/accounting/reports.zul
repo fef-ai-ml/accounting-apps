@@ -15,6 +15,7 @@
 						<button label="Run" onClick="@command('runTrialBalance')"/>
 						<button label="Export CSV" iconSclass="z-icon-download" disabled="@load(empty vm.trialRows)" onClick="@command('exportTrialBalance')"/>
 					</hlayout>
+					<label value="@load(vm.trialHeading)"/>
 					<listbox model="@load(vm.trialRows)" emptyMessage="No posted entries up to this date" sclass="card">
 						<listhead>
 							<listheader label="Code" width="90px"/>
@@ -45,6 +46,8 @@
 						<button label="Run" onClick="@command('runLedger')"/>
 						<button label="Export CSV" iconSclass="z-icon-download" disabled="@load(vm.ledger eq null)" onClick="@command('exportLedger')"/>
 					</hlayout>
+					<label value="@load(vm.ledgerHeading)"/>
+					<separator/>
 					<label value="@load(vm.ledgerOpening)"/>
 					<listbox model="@load(vm.ledgerLines)" emptyMessage="No lines in this range" sclass="card">
 						<listhead>

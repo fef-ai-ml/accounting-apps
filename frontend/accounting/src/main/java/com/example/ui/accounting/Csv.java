@@ -10,13 +10,16 @@ final class Csv {
 
 	private static final String BOM = "﻿";
 
-	private static final String RISKY_START = "=+-@\t\r";
+	private static final String RISKY_START = "=+-@\t\r＝＋－＠";
+
+	private static final String NEEDS_QUOTES = ",;\"\t\n\r";
 
 	private Csv() {
 	}
 
 	static byte[] trialBalance(TrialBalanceDto report) {
 		List<String> rows = new ArrayList<>();
+		rows.add(line("Trial balance as of", String.valueOf(report.asOf())));
 		rows.add("Code,Name,Type,Debit,Credit,Balance");
 		for (TrialBalanceDto.Row row : report.rows()) {
 			rows.add(line(text(row.code()), text(row.name()), text(row.type()), amount(row.debit()), amount(row.credit()),
@@ -28,6 +31,8 @@ final class Csv {
 
 	static byte[] generalLedger(GeneralLedgerDto report) {
 		List<String> rows = new ArrayList<>();
+		rows.add(line("General ledger", text(report.accountCode() + " " + report.accountName()), String.valueOf(report.from()),
+				String.valueOf(report.to())));
 		rows.add("Date,Entry,Description,Memo,Debit,Credit,Balance");
 		rows.add(line("Opening balance", "", "", "", "", "", amount(report.openingBalance())));
 		for (GeneralLedgerDto.Line row : report.lines()) {
@@ -36,6 +41,12 @@ final class Csv {
 		}
 		rows.add(line("Closing balance", "", "", "", "", "", amount(report.closingBalance())));
 		return bytes(rows);
+	}
+
+	/** An account code is free text; a slash in it would turn the download URL into a 400. */
+	static String generalLedgerFileName(GeneralLedgerDto report) {
+		return ("general-ledger-" + report.accountCode() + "-" + report.from() + "-" + report.to() + ".csv")
+				.replaceAll("[^A-Za-z0-9._-]", "_");
 	}
 
 	private static byte[] bytes(List<String> rows) {
@@ -55,10 +66,21 @@ final class Csv {
 		if (value == null || value.isEmpty()) {
 			return "";
 		}
-		String safe = RISKY_START.indexOf(value.charAt(0)) >= 0 ? "'" + value : value;
-		return safe.contains(",") || safe.contains("\"") || safe.contains("\n") || safe.contains("\r")
-				? "\"" + safe.replace("\"", "\"\"") + "\""
-				: safe;
+		String safe = startsRisky(value) ? "'" + value : value;
+		return safe.chars().anyMatch(c -> NEEDS_QUOTES.indexOf(c) >= 0) ? "\"" + safe.replace("\"", "\"\"") + "\"" : safe;
+	}
+
+	/** Spreadsheets skip what cannot be seen before deciding a cell is a formula, so the check must too. */
+	private static boolean startsRisky(String value) {
+		for (char c : value.toCharArray()) {
+			if (RISKY_START.indexOf(c) >= 0) {
+				return true;
+			}
+			if (!Character.isWhitespace(c) && !Character.isSpaceChar(c) && Character.getType(c) != Character.FORMAT) {
+				return false;
+			}
+		}
+		return false;
 	}
 
 }
