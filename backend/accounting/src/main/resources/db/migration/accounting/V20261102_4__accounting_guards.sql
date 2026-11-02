@@ -7,7 +7,7 @@ DECLARE
     debits     NUMERIC;
     credits    NUMERIC;
 BEGIN
-    IF NEW.status <> 'POSTED' THEN
+    IF NEW.status = 'DRAFT' THEN
         RETURN NULL;
     END IF;
     SELECT count(*), coalesce(sum(debit), 0), coalesce(sum(credit), 0)
@@ -32,6 +32,9 @@ BEGIN
         IF TG_OP = 'DELETE' THEN
             RETURN OLD;
         END IF;
+        IF NEW.status = 'REVERSED' THEN
+            RAISE EXCEPTION 'journal entry % is DRAFT and cannot be changed to REVERSED', OLD.id;
+        END IF;
         RETURN NEW;
     END IF;
     -- The single allowed change; version may move because JPA increments it on every update.
@@ -54,7 +57,7 @@ DECLARE
 BEGIN
     IF TG_OP <> 'INSERT' THEN
         SELECT status INTO parent_status FROM accounting.journal_entry
-        WHERE tenant_id = OLD.tenant_id AND id = OLD.entry_id;
+        WHERE tenant_id = OLD.tenant_id AND id = OLD.entry_id FOR SHARE;
         IF parent_status IN ('POSTED', 'REVERSED') THEN
             RAISE EXCEPTION 'lines of journal entry % are % and cannot be changed', OLD.entry_id, parent_status;
         END IF;
@@ -63,7 +66,7 @@ BEGIN
         RETURN OLD;
     END IF;
     SELECT status INTO parent_status FROM accounting.journal_entry
-    WHERE tenant_id = NEW.tenant_id AND id = NEW.entry_id;
+    WHERE tenant_id = NEW.tenant_id AND id = NEW.entry_id FOR SHARE;
     IF parent_status IN ('POSTED', 'REVERSED') THEN
         RAISE EXCEPTION 'lines of journal entry % are % and cannot be changed', NEW.entry_id, parent_status;
     END IF;
@@ -79,7 +82,7 @@ DECLARE
     usable BOOLEAN;
 BEGIN
     SELECT postable AND active INTO usable FROM accounting.account
-    WHERE tenant_id = NEW.tenant_id AND id = NEW.account_id;
+    WHERE tenant_id = NEW.tenant_id AND id = NEW.account_id FOR SHARE;
     -- No such account in this tenant: the composite foreign key rejects it.
     IF FOUND AND NOT usable THEN
         RAISE EXCEPTION 'account % is not postable and active', NEW.account_id;
@@ -88,5 +91,5 @@ BEGIN
 END $$;
 
 CREATE TRIGGER line_account
-    BEFORE INSERT OR UPDATE OF account_id ON accounting.journal_line
+    BEFORE INSERT OR UPDATE ON accounting.journal_line
     FOR EACH ROW EXECUTE FUNCTION accounting.guard_line_account();

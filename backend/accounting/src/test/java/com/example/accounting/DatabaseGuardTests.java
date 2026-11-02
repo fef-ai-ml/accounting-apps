@@ -2,6 +2,10 @@ package com.example.accounting;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.junit.jupiter.api.Test;
 
@@ -83,6 +87,9 @@ class DatabaseGuardTests extends AccountingTestSupport {
 		assertThatThrownBy(() -> inTransaction(
 				() -> sql("update accounting.journal_entry set status = 'REVERSED' where id = :id", posted[0])))
 				.hasStackTraceContaining("cannot be changed");
+		assertThatThrownBy(() -> inTransaction(() -> sql(
+				"update accounting.journal_entry set status = 'REVERSED', reversed_by = 1, description = 'x' where id = :id",
+				posted[0]))).hasStackTraceContaining("cannot be changed");
 		inTransaction(() -> sql(
 				"update accounting.journal_entry set status = 'REVERSED', reversed_by = 1, version = version + 1 where id = :id",
 				posted[0]));
@@ -148,8 +155,8 @@ class DatabaseGuardTests extends AccountingTestSupport {
 			entityManager.createNativeQuery("insert into accounting.settings (tenant_id) values (cast(:t as uuid))")
 					.setParameter("t", t).executeUpdate();
 			entityManager.createNativeQuery(
-					"insert into accounting.entry_sequence (tenant_id, year, next_value) values (cast(:t as uuid), 2026, 1)")
-					.setParameter("t", t).executeUpdate();
+					"insert into accounting.entry_sequence (tenant_id, year, next_value) values (cast(:t as uuid), :y, 1)")
+					.setParameter("t", t).setParameter("y", YEAR).executeUpdate();
 			entityManager.createNativeQuery("""
 					insert into accounting.audit_log (tenant_id, action, entity, actor_sub, actor_name, at)
 					values (cast(:t as uuid), 'SETUP', 'x', 's', 'n', now())
@@ -169,10 +176,98 @@ class DatabaseGuardTests extends AccountingTestSupport {
 			TENANT_TABLES.forEach(table -> assertThat(count(table)).as(table).isZero());
 			return 0;
 		});
-		assertThatThrownBy(() -> inTenantTransaction(other, "other", () -> entityManager.createNativeQuery("""
-				insert into accounting.account (tenant_id, code, name, type, postable, active)
-				values (cast(:t as uuid), 'Z', 'Z', 'ASSET', true, true)
-				""").setParameter("t", tenant.toString()).executeUpdate())).hasStackTraceContaining("row-level security");
+		// WITH CHECK on every table, naming this test's tenant while running as another one; parent ids are dummies.
+		List<String> inserts = List.of(
+				"insert into accounting.settings (tenant_id) values (cast(:t as uuid))",
+				"insert into accounting.account (tenant_id, code, name, type, postable, active) values (cast(:t as uuid), 'Z', 'Z', 'ASSET', true, true)",
+				"insert into accounting.fiscal_period (tenant_id, year, month, start_date, end_date, status) values (cast(:t as uuid), 2000, 1, date '2000-01-01', date '2000-01-31', 'OPEN')",
+				"insert into accounting.entry_sequence (tenant_id, year, next_value) values (cast(:t as uuid), 2000, 1)",
+				"insert into accounting.journal_entry (tenant_id, entry_date, period_id, description, status, created_by_sub, created_by_name, created_at, last_modified_by_sub, last_modified_by_name, last_modified_at, version) values (cast(:t as uuid), date '2000-01-01', 1, 'x', 'DRAFT', 's', 'n', now(), 's', 'n', now(), 0)",
+				"insert into accounting.journal_line (tenant_id, entry_id, line_no, account_id, debit, credit) values (cast(:t as uuid), 1, 1, 1, 1, 0)",
+				"insert into accounting.audit_log (tenant_id, action, entity, actor_sub, actor_name, at) values (cast(:t as uuid), 'SETUP', 'x', 's', 'n', now())");
+		for (String insert : inserts) {
+			assertThatThrownBy(() -> inTenantTransaction(other, "other",
+					() -> entityManager.createNativeQuery(insert).setParameter("t", tenant.toString()).executeUpdate()))
+					.as(insert).hasStackTraceContaining("row-level security");
+		}
+	}
+
+	@Test
+	void aDraftCannotSkipPostingByBecomingReversed() {
+		assertThatThrownBy(() -> inTransaction(() -> {
+			long entry = insertEntry(insertPeriod(YEAR, 1), "DRAFT");
+			return sql("update accounting.journal_entry set status = 'REVERSED', reversed_by = 1 where id = :id", entry);
+		})).hasStackTraceContaining("cannot be changed");
+		assertThatThrownBy(() -> inTransaction(() -> {
+			long entry = insertEntry(insertPeriod(YEAR, 1), "DRAFT");
+			insertLine(entry, 1, insertAccount("A", true, true), "1.00", "0");
+			insertLine(entry, 2, insertAccount("B", true, true), "0", "1.00");
+			return sql("update accounting.journal_entry set status = 'REVERSED', reversed_by = 1 where id = :id", entry);
+		})).hasStackTraceContaining("cannot be changed");
+	}
+
+	@Test
+	void reversedEntryAndItsLinesCannotBeChangedOrDeleted() {
+		long[] posted = postedEntry();
+		inTransaction(() -> sql(
+				"update accounting.journal_entry set status = 'REVERSED', reversed_by = 1, version = version + 1 where id = :id",
+				posted[0]));
+		assertThatThrownBy(() -> inTransaction(
+				() -> sql("delete from accounting.journal_entry where id = :id", posted[0])))
+				.hasStackTraceContaining("cannot be changed");
+		assertThatThrownBy(() -> inTransaction(
+				() -> sql("update accounting.journal_line set memo = 'x' where id = :id", posted[1])))
+				.hasStackTraceContaining("cannot be changed");
+		assertThatThrownBy(() -> inTransaction(
+				() -> sql("delete from accounting.journal_line where id = :id", posted[1])))
+				.hasStackTraceContaining("cannot be changed");
+	}
+
+	@Test
+	void changingALineOfADeactivatedAccountIsRejected() {
+		long[] ids = inTransaction(() -> {
+			long account = insertAccount("A", true, true);
+			long entry = insertEntry(insertPeriod(YEAR, 1), "DRAFT");
+			insertLine(entry, 1, account, "1.00", "0");
+			return new long[] { account, entry };
+		});
+		inTransaction(() -> sql("update accounting.account set active = false where id = :id", ids[0]));
+		assertThatThrownBy(() -> inTransaction(
+				() -> sql("update accounting.journal_line set memo = 'x' where entry_id = :id", ids[1])))
+				.hasStackTraceContaining("is not postable and active");
+	}
+
+	@Test
+	void aLineRacingAPostWaitsAndIsRejected() throws Exception {
+		long[] draft = inTransaction(() -> {
+			long entry = insertEntry(insertPeriod(YEAR, 1), "DRAFT");
+			insertLine(entry, 1, insertAccount("A", true, true), "1.00", "0");
+			insertLine(entry, 2, insertAccount("B", true, true), "0", "1.00");
+			return new long[] { entry, insertAccount("C", true, true) };
+		});
+		CountDownLatch posting = new CountDownLatch(1);
+		try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+			Future<Integer> poster = pool.submit(() -> inTransaction(() -> {
+				int changed = sql("update accounting.journal_entry set status = 'POSTED' where id = :id", draft[0]);
+				posting.countDown();
+				try {
+					Thread.sleep(500);
+				}
+				catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+				}
+				return changed;
+			}));
+			Future<Integer> writer = pool.submit(() -> {
+				posting.await();
+				return inTransaction(() -> {
+					insertLine(draft[0], 3, draft[1], "1.00", "0");
+					return 0;
+				});
+			});
+			assertThat(poster.get()).isEqualTo(1);
+			assertThatThrownBy(writer::get).hasStackTraceContaining("cannot be changed");
+		}
 	}
 
 }
