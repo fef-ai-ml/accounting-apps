@@ -78,6 +78,8 @@ class JournalDraftTests extends AccountingTestSupport {
 		String[] tooMany = new String[501];
 		java.util.Arrays.fill(tooMany, line(cash, "1", "0"));
 		create(entry(DATE, tooMany)).andExpect(problem(400, "too-many-lines"));
+		create("{\"date\": \"" + DATE + "\", \"description\": \"x\", \"lines\": [null]}")
+				.andExpect(problem(400, "validation"));
 	}
 
 	@Test

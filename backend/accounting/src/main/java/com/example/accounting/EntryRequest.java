@@ -13,6 +13,6 @@ public record EntryRequest(
 		@NotNull LocalDate date,
 		@Size(max = 100) String reference,
 		@NotBlank @Size(max = 500) String description,
-		@NotNull List<@Valid LineRequest> lines,
+		@NotNull List<@NotNull @Valid LineRequest> lines,
 		Long version) {
 }
