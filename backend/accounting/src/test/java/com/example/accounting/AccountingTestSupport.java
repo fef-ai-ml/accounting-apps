@@ -119,4 +119,51 @@ abstract class AccountingTestSupport {
 		};
 	}
 
+	/** Native inserts that bypass the services; call inside a transaction of this test's tenant. */
+	long insertAccount(String code, boolean postable, boolean active) {
+		return ((Number) entityManager.createNativeQuery("""
+				insert into accounting.account (tenant_id, code, name, type, postable, active)
+				values (cast(:tenant as uuid), :code, :code, 'ASSET', :postable, :active) returning id
+				""").setParameter("tenant", tenantOfTransaction().toString()).setParameter("code", code)
+				.setParameter("postable", postable).setParameter("active", active).getSingleResult()).longValue();
+	}
+
+	long insertPeriod(int year, int month) {
+		return ((Number) entityManager.createNativeQuery("""
+				insert into accounting.fiscal_period (tenant_id, year, month, start_date, end_date, status)
+				values (cast(:tenant as uuid), :year, :month, make_date(:year, :month, 1),
+				        cast(make_date(:year, :month, 1) + interval '1 month - 1 day' as date), 'OPEN') returning id
+				""").setParameter("tenant", tenantOfTransaction().toString())
+				.setParameter("year", year).setParameter("month", month).getSingleResult()).longValue();
+	}
+
+	long insertEntry(long periodId, String status) {
+		return ((Number) entityManager.createNativeQuery("""
+				insert into accounting.journal_entry (tenant_id, entry_date, period_id, description, status,
+				    created_by_sub, created_by_name, created_at, last_modified_by_sub, last_modified_by_name,
+				    last_modified_at, version)
+				select cast(:tenant as uuid), p.start_date, p.id, 'native', :status, 's', 'n', now(), 's', 'n', now(), 0
+				from accounting.fiscal_period p where p.id = :period returning id
+				""").setParameter("tenant", tenantOfTransaction().toString()).setParameter("status", status)
+				.setParameter("period", periodId).getSingleResult()).longValue();
+	}
+
+	void insertLine(long entryId, int lineNo, long accountId, String debit, String credit) {
+		entityManager.createNativeQuery("""
+				insert into accounting.journal_line (tenant_id, entry_id, line_no, account_id, debit, credit)
+				values (cast(:tenant as uuid), :entry, :lineNo, :account, cast(:debit as numeric), cast(:credit as numeric))
+				""").setParameter("tenant", tenantOfTransaction().toString()).setParameter("entry", entryId)
+				.setParameter("lineNo", lineNo).setParameter("account", accountId).setParameter("debit", debit)
+				.setParameter("credit", credit).executeUpdate();
+	}
+
+	/** Runs native SQL with no result in the current transaction. */
+	int sql(String statement, long id) {
+		return entityManager.createNativeQuery(statement).setParameter("id", id).executeUpdate();
+	}
+
+	private static UUID tenantOfTransaction() {
+		return ((KeycloakAuthentication) SecurityContextHolder.getContext().getAuthentication()).getTenantId().orElseThrow();
+	}
+
 }

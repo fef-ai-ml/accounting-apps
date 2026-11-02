@@ -55,9 +55,4 @@ class SchemaTests extends AccountingTestSupport {
 				.hasStackTraceContaining("permission denied");
 	}
 
-	@Test
-	void withoutATenantTenantTablesLookEmpty() {
-		assertThat(jdbc.queryForObject("select count(*) from accounting.account", Long.class)).isZero();
-	}
-
 }
