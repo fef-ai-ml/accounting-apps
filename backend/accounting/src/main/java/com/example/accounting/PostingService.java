@@ -42,7 +42,7 @@ public class PostingService {
 	public EntryResponse post(long id, long version) {
 		Actor actor = Actor.current();
 		Settings current = settings.require();
-		JournalEntry entry = journal.load(id);
+		JournalEntry entry = journal.loadForChange(id);
 		JournalService.requireDraft(entry);
 		JournalService.requireVersion(entry, version);
 		JournalRules.checkBalanced(entry.sides());
@@ -63,7 +63,7 @@ public class PostingService {
 	public ReverseResponse reverse(long id, ReverseRequest request) {
 		Actor actor = Actor.current();
 		settings.require();
-		JournalEntry original = journal.load(id);
+		JournalEntry original = journal.loadForChange(id);
 		if (original.getStatus() == EntryStatus.DRAFT) {
 			throw AccountingException.conflict("not-draft", "Only a posted entry can be reversed");
 		}

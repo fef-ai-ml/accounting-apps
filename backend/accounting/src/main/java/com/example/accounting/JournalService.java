@@ -79,7 +79,7 @@ public class JournalService {
 	}
 
 	public EntryResponse update(long id, EntryRequest request) {
-		JournalEntry entry = load(id);
+		JournalEntry entry = loadForChange(id);
 		requireDraft(entry);
 		if (request.version() == null) {
 			throw AccountingException.badRequest("validation", "version is required when updating an entry");
@@ -104,10 +104,15 @@ public class JournalService {
 	}
 
 	public void delete(long id, long version) {
-		JournalEntry entry = load(id);
+		JournalEntry entry = loadForChange(id);
 		requireDraft(entry);
 		requireVersion(entry, version);
 		entry.markDeleted(Actor.current(), clock.instant());
+	}
+
+	/** Lock order everywhere is entry, then period, then sequence; closing a period takes no entry locks, so no cycle. */
+	public JournalEntry loadForChange(long id) {
+		return entries.lockForChange(id).orElseThrow(() -> new AccountingNotFoundException("Journal entry " + id));
 	}
 
 	public JournalEntry load(long id) {

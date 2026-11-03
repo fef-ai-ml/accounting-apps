@@ -7,6 +7,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +19,7 @@ import com.jayway.jsonpath.JsonPath;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -165,6 +167,87 @@ class PostingConcurrencyTests extends AccountingTestSupport {
 		}
 		mvc.perform(get("/api/accounting/journal-entries/" + id).with(as("u", READ)))
 				.andExpect(jsonPath("$.status").value("POSTED"));
+	}
+
+	private MockHttpServletResponse deleteDraft(long id, long version) throws Exception {
+		return mvc.perform(delete("/api/accounting/journal-entries/" + id).param("version", String.valueOf(version))
+				.with(as("deleter", WRITE))).andReturn().getResponse();
+	}
+
+	/** Holds the entry's row until {@code release}, then commits; {@code held} says the lock is taken. */
+	private Future<Integer> holding(ExecutorService pool, long id, String statement, CountDownLatch held, CountDownLatch release) {
+		return pool.submit(() -> inTransaction(() -> {
+			int changed = sql(statement, id);
+			held.countDown();
+			try {
+				release.await(10, TimeUnit.SECONDS);
+			}
+			catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+			}
+			return changed;
+		}));
+	}
+
+	@Test
+	void aPostWaitingOnADeleteGetsNotFound() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		long version = versionOf(id);
+		CountDownLatch held = new CountDownLatch(1);
+		CountDownLatch release = new CountDownLatch(1);
+		try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+			Future<Integer> deleter = holding(pool, id,
+					"update accounting.journal_entry set deleted_at = now(), deleted_by_sub = 's', deleted_by_name = 'n' where id = :id", held, release);
+			held.await();
+			Future<MockHttpServletResponse> poster = pool.submit(() -> postEntry(id, version, "checker").andReturn().getResponse());
+			Thread.sleep(300);
+			assertThat(poster.isDone()).as("the post waits on the row lock").isFalse();
+			release.countDown();
+			assertThat(deleter.get()).isEqualTo(1);
+			assertThat(poster.get().getStatus()).isEqualTo(404);
+		}
+	}
+
+	@Test
+	void aDeleteWaitingOnAPostGetsNotDraft() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		long version = versionOf(id);
+		CountDownLatch held = new CountDownLatch(1);
+		CountDownLatch release = new CountDownLatch(1);
+		try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+			Future<Integer> poster = holding(pool, id,
+					"update accounting.journal_entry set status = 'POSTED', entry_no = 'JE-RACE' where id = :id", held, release);
+			held.await();
+			Future<MockHttpServletResponse> deleter = pool.submit(() -> deleteDraft(id, version));
+			Thread.sleep(300);
+			assertThat(deleter.isDone()).as("the delete waits on the row lock").isFalse();
+			release.countDown();
+			assertThat(poster.get()).isEqualTo(1);
+			assertThat(deleter.get().getStatus()).isEqualTo(409);
+			assertThat(deleter.get().getContentAsString()).contains("not-draft");
+		}
+	}
+
+	@Test
+	void aDeleteRacingAPostNeverAnswers500() throws Exception {
+		for (int i = 0; i < 10; i++) {
+			long id = balancedDraft("maker", DATE);
+			long version = versionOf(id);
+			try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+				CountDownLatch go = new CountDownLatch(1);
+				Future<MockHttpServletResponse> poster = pool.submit(() -> {
+					go.await();
+					return postEntry(id, version, "checker").andReturn().getResponse();
+				});
+				Future<MockHttpServletResponse> deleter = pool.submit(() -> {
+					go.await();
+					return deleteDraft(id, version);
+				});
+				go.countDown();
+				assertThat(List.of(poster.get().getStatus(), deleter.get().getStatus()))
+						.isIn(List.of(200, 409), List.of(404, 204));
+			}
+		}
 	}
 
 }
