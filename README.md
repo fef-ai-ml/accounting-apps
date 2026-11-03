@@ -80,6 +80,21 @@ once: `docker exec <postgres-container> psql -U app -d app -c 'CREATE DATABASE k
   next backend start). Rows edited directly in `iam.role_permission` reach running backends within 60 seconds; the UI
   picks them up at the next login.
 
+### Before upgrading a database that holds accounting data
+
+The ledger hardening migration checks existing rows, so bad data would stop the backend from starting. None is expected. To check first, run this read-only query as `app`; every count must be 0:
+
+```sql
+select
+  (select count(*) from accounting.journal_entry where (status = 'DRAFT') <> (entry_no is null)) as number_mismatch,
+  (select count(*) from (select 1 from accounting.journal_entry where reversal_of is not null
+                         group by tenant_id, reversal_of having count(*) > 1) d) as double_reversals,
+  (select count(*) from accounting.journal_entry e where e.reversal_of is not null and not exists
+     (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversal_of)) as bad_reversal_of,
+  (select count(*) from accounting.journal_entry e where e.reversed_by is not null and not exists
+     (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversed_by)) as bad_reversed_by;
+```
+
 ### Manual end-to-end check
 
 Run this after changes to login, permissions or the ZK wiring; the automated tests cannot cover the browser, Keycloak
@@ -116,7 +131,7 @@ Use a private browser window per user, at `http://localhost:8081`:
 | 18 | Add a second line, click **Balance** on it, then **Save draft** | Banner shows "Balanced"; no number yet; no Post button (no permission) |
 | 19 | Log in as `accountant`, open the draft, change nothing, click **Post** | Number `JE-<year>-000001`; form is read-only with Reverse buttons |
 | 20 | Click **Reverse** on the posted entry | Asks for confirmation before posting the reversal |
-| 21 | As `accountant`, create and save your own balanced draft | Post is disabled with "You prepared this entry; another user must post it" |
+| 21 | As `accountant`, create and save your own balanced draft | Post is disabled with "You prepared or edited this entry; another user must post it" |
 | 22 | As `admin`, switch the setting off in **Accounts**; as `accountant`, reopen that draft | Post is enabled and works; switch the setting back on afterwards |
 | 23 | Open a draft in two browser windows as `accountant`; save a change in one, click **Save draft** in the other | "Someone else changed this entry. Reload?"; Yes shows the other window's change |
 | 24 | In one window delete a draft; in the other, open its row from the list | An error message and no blank form |
@@ -132,6 +147,10 @@ Use a private browser window per user, at `http://localhost:8081`:
 | 34 | In a saved draft change a debit to `-5`, leave the field, then click **Save draft** | The error bubble stays and nothing is saved; **Save draft** comes back once the amount is corrected |
 | 35 | Open **New entry**, type something, and leave it idle past the session timeout; then try to leave the page, and separately to save | The work is lost, by decision (no keep-alive: an idle session must still expire). The browser warns before leaving; Save says "Your login has expired. This entry was not saved." where the login, not only the ZK session, is what failed |
 | 36 | Open a report's CSV in Excel with Indonesian regional settings | Seen 2026-11-03 in Excel for Mac (English language, region Indonesia): columns split and amounts are numbers. Not run on Windows Excel with Indonesian settings; reasoned only: a comma-separated file with dot decimals may open in one column there; check whether Data > From Text is needed |
+| 37 | Log in as an accountant and an admin: open **Audit**. Log in as a bookkeeper and a viewer | Accountant and admin see the menu item and the log. Bookkeeper and viewer do not see it |
+| 38 | As an admin, rename an account (or change its type or postable flag), then open **Audit** and filter by `ACCOUNT_CHANGE` | One row per change, with your name, Jakarta time and `name: old → new` (likewise for type and postable) |
+| 39 | Create a draft as one user, save it as a second user, then save it as a third. Open it as each | All three see "You prepared or edited this entry; another user must post it" and cannot post; a fourth user can |
+| 40 | Save a draft with changed lines, delete another draft, then query `select count(*) from accounting.journal_line where deleted_at is not null` as `app` | The count grew; neither draft's old lines show on any screen |
 
 If you are sent back to the login page after every login, the shell log shows `API call unauthorized` with the
 backend's `WWW-Authenticate` reason (usually an issuer mismatch, see above).

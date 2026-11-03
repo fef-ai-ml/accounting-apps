@@ -18,7 +18,7 @@ trial balance and general ledger.
 - Posted entries are numbered `JE-<year>-<6 digits>` without gaps or duplicates per tenant and year, also under
   concurrent posting.
 - No entry is posted into a closed period.
-- With maker/checker on, nobody posts an entry they created or last edited.
+- With maker/checker on, nobody posts an entry they created or ever edited.
 - The trial balance always has a zero difference; tenants never see each other's data.
 
 ### Decisions taken during design
@@ -56,7 +56,7 @@ Settled during implementation, beyond the plan's list:
 
 ### Settled by the frontend plan
 
-- `EntryResponse` gains `posterBlocked`, computed for the current user; the hint "You prepared this entry; another user must post it" must not compare display names, and subs stay out of the API.
+- `EntryResponse` gains `posterBlocked`, computed for the current user; the hint "You prepared or edited this entry; another user must post it" must not compare display names, and subs stay out of the API.
 - Posting needs a saved draft: Post is refused on screen while the form has unsaved changes, because the backend posts the saved version.
 - The entry form is a modal window, not a page in the shell, so Periods can open it for a blocking draft and `ShellViewModel` stays unchanged.
 - The accounts tree is an indented list, not a ZK `<tree>`.
@@ -65,7 +65,7 @@ Settled during implementation, beyond the plan's list:
 - CSV text cells whose first visible character is `=`, `+`, `-`, `@` or a full-width form of them, or that start with tab or carriage return, are prefixed with `'`. Cells holding `;` or a tab are quoted too, for Excel's `;` list separator. Amounts stay numeric, with a dot. Files start with a UTF-8 BOM so Excel reads them correctly.
 - Reports name what they show from the response, never the inputs: a heading on screen, and a first CSV row (`Trial balance as of,<date>`, `General ledger,<code> <name>,<from>,<to>`) before the header row.
 - There is no delete button on accounts; deactivating covers it.
-- `ApiErrors` shows the problem `detail` of any error response that has one, 403 and 5xx included, so `separate-poster-required` reads "You prepared this entry; another user must post it". Otherwise it shows "The server could not complete the request." It never shows an exception's message, which carries response bodies and internal URLs. Notification text is escaped.
+- `ApiErrors` shows the problem `detail` of any error response that has one, 403 and 5xx included, so `separate-poster-required` reads "You prepared or edited this entry; another user must post it". Otherwise it shows "The server could not complete the request." It never shows an exception's message, which carries response bodies and internal URLs. Notification text is escaped.
 - Saves are refused on screen with `Line n: amounts have at most 2 decimals`, since the form shows two and would otherwise call `100,004` balanced.
 - Unsaved work: a dirty form asks "Discard unsaved changes?" on close, and the browser warns on leaving while the form is open. When a token refresh fails on Save, Post or Reverse the form says "Your login has expired. This entry was not saved." before logging out. There is no keep-alive: an idle session must still expire, so a form left past the timeout is lost.
 - Before setup the journal says so, worded by permission, and hides New entry. A failed load never shows the "not set up" panel.
@@ -163,8 +163,9 @@ of the action (display only, never rewritten). Indexes: `journal_line (tenant_id
 Database guards behind the service checks (defence in depth; a violation is a bug, logged as such):
 
 - Deferred constraint trigger: when an entry is `POSTED` at commit, its lines balance and number at least two.
-- Trigger: a `POSTED` or `REVERSED` entry and its lines cannot be updated or deleted, except the single transition
-  `POSTED → REVERSED` with `reversed_by` set.
+- Trigger: a `POSTED` or `REVERSED` entry and its lines cannot be updated, except the single transition
+  `POSTED → REVERSED` with `reversed_by` set. No entry or line can be deleted, draft or not; see
+  `2026-11-03-ledger-hardening-design.md`.
 - Trigger: a line's account is `postable` and `active` when the line is inserted or changed.
 
 ### Chart-of-accounts template (seed of `coa_template`)
@@ -252,7 +253,7 @@ active account; at most 500 lines. `entry_date` must fall into an existing perio
 1. Entry is `DRAFT`, has at least two lines and sum debit = sum credit > 0.
 2. Every account is still postable and active.
 3. The period of `entry_date` exists and is `OPEN`; it is locked `FOR SHARE` (period close locks it `FOR UPDATE`).
-4. With `require_separate_poster` on, the poster's `sub` differs from `created_by_sub` and `last_modified_by_sub`.
+4. With `require_separate_poster` on, the poster's `sub` is not in `prepared_by_subs`.
 5. Number from `entry_sequence` locked `FOR UPDATE` (row created on first use for the year); set `posted_by_*`,
    `posted_at`, status `POSTED`; write `audit_log POST`.
 
@@ -274,7 +275,7 @@ Periods (22), Reports (23). The shell needs no change.
   combobox (search by code or name, postable and active only), memo, debit and credit `decimalbox` (format
   `#,##0.00`, Indonesian separators; typing one side clears the other); live totals with a Balanced / Difference
   banner; a "Balance" button that puts the difference on the current line. Buttons by state and permission: DRAFT →
-  Save draft, Delete (`write`), Post (`post`, enabled only when balanced, with the hint "You prepared this entry;
+  Save draft, Delete (`write`), Post (`post`, enabled only when balanced, with the hint "You prepared or edited this entry;
   another user must post it" when maker/checker blocks the user); POSTED → read-only, Reverse, Reverse & copy to draft
   (`post`); REVERSED → read-only with a link to the reversal. A 409 shows "Someone else changed this entry. Reload?".
 - **Accounts**: before setup an empty state with "Initialize from template" (`account-manage`); afterwards a tree with
