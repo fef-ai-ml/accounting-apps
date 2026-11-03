@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.stream.Collectors;
 
+import org.hibernate.exception.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -67,9 +68,12 @@ class AccountingExceptionHandler {
 			return problem(HttpStatus.INTERNAL_SERVER_ERROR, "invariant-violated", "The request could not be completed");
 		}
 		if ("23505".equals(state)) {
+			// Usually two users at once, but it can also hide a numbering bug.
+			log.warn("Database refused a duplicate: SQLState {}, constraint {}", state, constraintName(ex));
 			return problem(HttpStatus.CONFLICT, "conflict", "Someone else made the same change; reload and try again");
 		}
 		if (state != null && state.startsWith("22")) {
+			log.warn("Database refused a value: SQLState {}, constraint {}", state, constraintName(ex));
 			return problem(HttpStatus.BAD_REQUEST, "validation", "The request contains a value the database cannot store");
 		}
 		log.error("Database operation failed", ex);
@@ -80,6 +84,15 @@ class AccountingExceptionHandler {
 		for (Throwable cause = ex; cause != null; cause = cause.getCause() == cause ? null : cause.getCause()) {
 			if (cause instanceof SQLException sql) {
 				return sql.getSQLState();
+			}
+		}
+		return null;
+	}
+
+	private static String constraintName(Throwable ex) {
+		for (Throwable cause = ex; cause != null; cause = cause.getCause() == cause ? null : cause.getCause()) {
+			if (cause instanceof ConstraintViolationException violation) {
+				return violation.getConstraintName();
 			}
 		}
 		return null;
