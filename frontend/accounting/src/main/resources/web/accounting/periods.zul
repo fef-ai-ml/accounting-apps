@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zk>
+	<style src="~./accounting/accounting.css"/>
+	<div viewModel="@id('vm') @init('com.example.ui.accounting.PeriodsViewModel')" sclass="accounting">
+		<hlayout sclass="filters card" valign="middle">
+			<label value="Year"/>
+			<intbox value="@load(vm.year)" width="80px" onChange="@command('changeYear', year=self.value)"/>
+			<button label="@load(vm.openYearLabel)" visible="@load(vm.canManage and vm.year ne null)" onClick="@command('openYear')"/>
+		</hlayout>
+
+		<groupbox mold="3d" sclass="card" visible="@load(not empty vm.blockingDrafts)">
+			<caption label="@load(vm.blockedText)"/>
+			<listbox model="@load(vm.blockingDrafts)">
+				<template name="model" var="draft">
+					<listitem onClick="@command('openDraft', id=draft.id)">
+						<listcell label="@load(draft.dateText)"/>
+						<listcell label="@load(draft.description)"/>
+						<listcell label="@load(draft.totalDebitText)"/>
+					</listitem>
+				</template>
+			</listbox>
+		</groupbox>
+
+		<groupbox mold="3d" sclass="card" visible="@load(vm.reopening ne null)">
+			<caption label="@load(vm.reopenText)"/>
+			<textbox value="@bind(vm.reason)" maxlength="500" placeholder="Reason" hflex="1"/>
+			<hbox>
+				<button label="Confirm reopen" onClick="@command('confirmReopen')"/>
+				<button label="Cancel" onClick="@command('cancelReopen')"/>
+			</hbox>
+		</groupbox>
+
+		<listbox model="@load(vm.periods)" emptyMessage="No periods for this year" sclass="card">
+			<listhead>
+				<listheader label="Month"/>
+				<listheader label="Status" width="110px"/>
+				<listheader label="Closed by"/>
+				<listheader label="" width="130px" visible="@load(vm.canManage)"/>
+			</listhead>
+			<template name="model" var="period">
+				<listitem>
+					<listcell label="@load(period.label)"/>
+					<listcell label="@load(period.status)"/>
+					<listcell label="@load(period.closedByName)"/>
+					<listcell>
+						<button label="Close" visible="@load(vm.canManage and period.open)" onClick="@command('close', period=period)"/>
+						<button label="Reopen" visible="@load(vm.canManage and not period.open)" onClick="@command('startReopen', period=period)"/>
+					</listcell>
+				</listitem>
+			</template>
+		</listbox>
+	</div>
+</zk>

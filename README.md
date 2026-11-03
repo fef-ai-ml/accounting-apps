@@ -102,7 +102,7 @@ Use a private browser window per user, at `http://localhost:8081`:
 | 4 | Log in as `editor`/`editor` | Form and Edit visible, no Delete; creating and editing a task works |
 | 5 | Log in as `admin`/`admin` | Everything visible; deleting a task works |
 | 6 | `curl -i http://localhost:8080/api/tasks` | `401` with `WWW-Authenticate: Bearer` |
-| 7 | Stop the backend, reload the shell | Page renders with an "API error" notification, no stack trace; after restarting the backend and reloading, it works again |
+| 7 | Stop the backend, reload the shell | Page renders with a "The server could not complete the request." notification, no stack trace; after restarting the backend and reloading, it works again |
 | 8 | Restart the shell with `env SERVER_SERVLET_SESSION_TIMEOUT=1m`, log in, wait 2 minutes, click Edit | Page reloads through login (Keycloak may sign you straight back in); no raw HTML or error dialog |
 | 9 | Leave a page idle for more than 5 minutes (access-token lifetime), then act | It still works (the shell refreshes the token silently) |
 | 10 | In the Keycloak admin console (`http://localhost:8180`, `admin`/`admin`) sign out the `editor` session, wait more than 5 minutes, click Save | Sent to `/logout`, then the Keycloak login page |
@@ -110,6 +110,28 @@ Use a private browser window per user, at `http://localhost:8081`:
 | 12 | `UPDATE iam.tenant SET status='SUSPENDED' WHERE alias='acme'` | Within 60 s `acme-admin` sees "Your organization has no access" (set it back to `ACTIVE` afterwards) |
 | 13 | Log in as a demo user | Tasks created before the upgrade still show |
 | 14 | Log in as a Keycloak user in no organization | "Your organization has no access" |
+| 15 | Log in as `admin`, open **Accounts**, click **Initialize from template** | Tree of 39 accounts; settings panel with "Require a different user to post entries" on |
+| 16 | Log in as `bookkeeper`, open **Journal**, **New entry**: search an account by name, enter a debit, then a credit on the same line | Typing the credit clears the debit; totals update; banner shows the difference |
+| 17 | In that form pick an account on one line, then look at the other lines | The other lines stay blank (the render test cannot see this) |
+| 18 | Add a second line, click **Balance** on it, then **Save draft** | Banner shows "Balanced"; no number yet; no Post button (no permission) |
+| 19 | Log in as `accountant`, open the draft, change nothing, click **Post** | Number `JE-<year>-000001`; form is read-only with Reverse buttons |
+| 20 | Click **Reverse** on the posted entry | Asks for confirmation before posting the reversal |
+| 21 | As `accountant`, create and save your own balanced draft | Post is disabled with "You prepared this entry; another user must post it" |
+| 22 | As `admin`, switch the setting off in **Accounts**; as `accountant`, reopen that draft | Post is enabled and works; switch the setting back on afterwards |
+| 23 | Open a draft in two browser windows as `accountant`; save a change in one, click **Save draft** in the other | "Someone else changed this entry. Reload?"; Yes shows the other window's change |
+| 24 | In one window delete a draft; in the other, open its row from the list | An error message and no blank form |
+| 25 | Change a saved draft without saving, click **Post** | Refused: "Save the draft first" |
+| 26 | As `accountant`, in **Periods**, click **Close** on a month holding a draft | The draft is listed; opening it from the list works; closing succeeds once it is posted or deleted |
+| 27 | **Reopen** a closed month | Asks for a reason; refused when empty |
+| 28 | **Reports**: run the trial balance, export CSV, open it in a spreadsheet | Difference 0,00 on screen; columns and non-ASCII names correct in the spreadsheet |
+| 29 | Run the general ledger for an account with activity | Opening balance, running balance, closing balance |
+| 30 | Log in as `acme-admin` | No `demo` accounting data on any of the four screens |
+| 31 | Open Journal, Accounts, Periods and Reports inside the shell | Each shows its styling (banner colours, cards); the CSS loads in the shell, not only in the module's own app |
+| 32 | As `bookkeeper` (no `accounting:account-manage`), open **Accounts** | No row buttons (Add child, Edit, Deactivate) and no **Add top-level account**; Tab cannot reach them |
+| 33 | As `bookkeeper`, key a whole entry with the keyboard only: Tab from the date through description and each line's account (type part of a code or name), memo and amount, then to **Save draft** and press Enter | Focus stays in the row being keyed, Balance and the remove button are no Tab stops, each account filled in on the last line adds a blank line, and the entry saves |
+| 34 | In a saved draft change a debit to `-5`, leave the field, then click **Save draft** | The error bubble stays and nothing is saved; **Save draft** comes back once the amount is corrected |
+| 35 | Open **New entry**, type something, and leave it idle past the session timeout; then try to leave the page, and separately to save | The work is lost, by decision (no keep-alive: an idle session must still expire). The browser warns before leaving; Save says "Your login has expired. This entry was not saved." where the login, not only the ZK session, is what failed |
+| 36 | Open a report's CSV in Excel with Indonesian regional settings | Not run yet, reasoned only: a comma-separated file with dot decimals may open in one column there; check whether Data > From Text is needed |
 
 If you are sent back to the login page after every login, the shell log shows `API call unauthorized` with the
 backend's `WWW-Authenticate` reason (usually an issuer mismatch, see above).
@@ -176,8 +198,13 @@ until it is onboarded as a new tenant under an unused alias (onboarding step 1).
 
 Phase 1 of the accounting module (`backend/accounting`, schema `accounting`): a chart of accounts copied from a
 template at setup, journal entries that go draft -> post -> reverse with maker/checker, gapless `JE-<year>-<6 digits>`
-numbers per tenant and year, monthly periods, a trial balance and a general ledger. The screens arrive with the
-frontend plan; until then use the API (Swagger UI: `/swagger-ui.html`).
+numbers per tenant and year, monthly periods, a trial balance and a general ledger. The API is also in Swagger UI
+(`/swagger-ui.html`).
+
+`frontend/accounting` adds four screens to the shell: **Journal** (filtered, paged list), **Accounts** (setup from the
+template, settings, chart of accounts), **Periods** (close, reopen, open a year) and **Reports** (trial balance and
+general ledger, both with CSV export). The entry form is a modal window, opened from the Journal list with "New entry"
+or a row, and from Periods when closing a month is blocked by a draft; the shell does not know about it.
 
 | Method and path | Permission | Notes |
 |---|---|---|

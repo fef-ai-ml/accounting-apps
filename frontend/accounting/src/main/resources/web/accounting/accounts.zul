@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zk>
+	<style src="~./accounting/accounting.css"/>
+	<div viewModel="@id('vm') @init('com.example.ui.accounting.AccountsViewModel')" sclass="accounting">
+
+		<groupbox mold="3d" sclass="card" visible="@load(not vm.initialized and not vm.loadFailed)">
+			<caption label="Accounting is not set up yet"/>
+			<label value="Start from the Indonesian chart of accounts template. You can edit your copy afterwards."/>
+			<separator/>
+			<button label="Initialize from template" visible="@load(vm.canManage)" onClick="@command('setup')"/>
+		</groupbox>
+
+		<groupbox mold="3d" sclass="card" visible="@load(vm.initialized)">
+			<caption label="Settings"/>
+			<checkbox label="Require a different user to post entries" checked="@load(vm.requireSeparatePoster)"
+				disabled="@load(not vm.canManage)" onCheck="@command('setSeparatePoster', checked=self.checked)"/>
+		</groupbox>
+
+		<groupbox mold="3d" sclass="card" visible="@load(vm.editing)">
+			<caption label="@load(vm.editingId eq null ? 'New account' : 'Edit account')"/>
+			<grid>
+				<columns>
+					<column width="120px"/>
+					<column/>
+				</columns>
+				<rows>
+					<row>
+						<label value="Code"/>
+						<textbox value="@bind(vm.code)" maxlength="20"/>
+					</row>
+					<row>
+						<label value="Name"/>
+						<textbox value="@bind(vm.name)" maxlength="200" hflex="1"/>
+					</row>
+					<row>
+						<label value="Type"/>
+						<combobox value="@bind(vm.type)" model="@load(vm.types)" readonly="true">
+							<template name="model"><comboitem label="@load(each)"/></template>
+						</combobox>
+					</row>
+					<row>
+						<label value="Parent"/>
+						<label value="@load(vm.parentLabel)"/>
+					</row>
+					<row>
+						<label value="Receives entries"/>
+						<checkbox checked="@bind(vm.postable)"/>
+					</row>
+				</rows>
+			</grid>
+			<hbox>
+				<button label="Save" iconSclass="z-icon-save" onClick="@command('save')"/>
+				<button label="Cancel" onClick="@command('cancel')"/>
+			</hbox>
+		</groupbox>
+
+		<listbox model="@load(vm.rows)" emptyMessage="No accounts yet" sclass="card" visible="@load(vm.initialized)">
+			<listhead>
+				<listheader label="Account"/>
+				<listheader label="Type" width="110px"/>
+				<listheader label="Receives entries" width="130px" align="center"/>
+				<listheader label="Active" width="70px" align="center"/>
+				<listheader label="" width="280px" visible="@load(vm.canManage)"/>
+			</listhead>
+			<template name="model" var="row">
+				<listitem>
+					<listcell style="@load(row.indentStyle)" sclass="@load(row.account.active ? '' : 'inactive')"
+						label="@load(row.account.label)"/>
+					<listcell label="@load(row.account.type)"/>
+					<listcell label="@load(row.account.postable ? 'Yes' : 'No')"/>
+					<listcell label="@load(row.account.active ? 'Yes' : 'No')"/>
+					<listcell>
+						<button label="Add child" visible="@load(vm.canManage and not row.account.postable)" onClick="@command('addChild', account=row.account)"/>
+						<button label="Edit" visible="@load(vm.canManage)" onClick="@command('edit', account=row.account)"/>
+						<button label="@load(row.account.active ? 'Deactivate' : 'Activate')" visible="@load(vm.canManage)" onClick="@command('toggleActive', account=row.account)"/>
+					</listcell>
+				</listitem>
+			</template>
+		</listbox>
+		<button label="Add top-level account" visible="@load(vm.initialized and vm.canManage)" onClick="@command('addChild', account=null)"/>
+	</div>
+</zk>

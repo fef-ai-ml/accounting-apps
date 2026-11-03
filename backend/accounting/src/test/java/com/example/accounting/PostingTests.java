@@ -288,4 +288,22 @@ class PostingTests extends AccountingTestSupport {
 		reverse(id, "{\"date\": \"" + DATE + "\"}").andExpect(problem(422, "account-not-postable"));
 	}
 
+	@Test
+	void anEntryTellsTheUserWhetherMakerCheckerBlocksThem() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		String path = "/api/accounting/journal-entries/" + id;
+
+		mvc.perform(get(path).with(as("maker", READ))).andExpect(jsonPath("$.posterBlocked").value(true));
+		mvc.perform(get(path).with(as("checker", READ))).andExpect(jsonPath("$.posterBlocked").value(false));
+
+		setSeparatePoster(false);
+		mvc.perform(get(path).with(as("maker", READ))).andExpect(jsonPath("$.posterBlocked").value(false));
+
+		setSeparatePoster(true);
+		mvc.perform(post(path + "/post").param("version", String.valueOf(versionOf(id))).with(as("checker", READ, POST)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.posterBlocked").value(false));
+		mvc.perform(get(path).with(as("maker", READ))).andExpect(jsonPath("$.posterBlocked").value(false));
+	}
+
 }

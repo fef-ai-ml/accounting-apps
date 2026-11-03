@@ -18,6 +18,10 @@
 			<groupId>com.example</groupId>
 			<artifactId>frontend-task</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>com.example</groupId>
+			<artifactId>frontend-accounting</artifactId>
+		</dependency>
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

@@ -4,6 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
 
+import com.example.ui.accounting.AccountingUiModule;
 import com.example.ui.common.ZkSupport;
 import com.example.ui.task.TaskUiModule;
 
@@ -12,7 +13,7 @@ import com.example.ui.task.TaskUiModule;
  * module, and register it here with {@code UiModule.remote(...)} instead of importing it.
  */
 @SpringBootApplication
-@Import({ ZkSupport.class, TaskUiModule.class })
+@Import({ ZkSupport.class, TaskUiModule.class, AccountingUiModule.class })
 public class ShellApplication {
 
 	public static void main(String[] args) {

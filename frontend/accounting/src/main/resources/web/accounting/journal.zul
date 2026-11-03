@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zk>
+	<style src="~./accounting/accounting.css"/>
+	<div viewModel="@id('vm') @init('com.example.ui.accounting.JournalViewModel')" sclass="accounting">
+		<div sclass="card" visible="@load(not vm.initialized)">
+			<label value="@load(vm.setupText)" sclass="banner banner-off"/>
+		</div>
+		<hlayout sclass="filters card">
+			<datebox valueInLocalDate="@bind(vm.from)" format="yyyy-MM-dd" placeholder="From" width="120px"/>
+			<datebox valueInLocalDate="@bind(vm.to)" format="yyyy-MM-dd" placeholder="To" width="120px"/>
+			<combobox value="@bind(vm.status)" model="@load(vm.statuses)" readonly="true" placeholder="Any status" width="120px">
+				<template name="model"><comboitem label="@load(each)"/></template>
+			</combobox>
+			<combobox value="@bind(vm.accountText)" model="@load(vm.accountModel)" autodrop="true" placeholder="Any account" width="220px">
+				<template name="model"><comboitem label="@load(each.label)"/></template>
+			</combobox>
+			<textbox value="@bind(vm.q)" placeholder="Search text" onOK="@command('search')" width="180px"/>
+			<button label="Search" iconSclass="z-icon-search" onClick="@command('search')"/>
+			<button label="New entry" iconSclass="z-icon-plus" visible="@load(vm.canWrite and vm.initialized)" onClick="@command('newEntry')"/>
+		</hlayout>
+
+		<listbox model="@load(vm.entries)" emptyMessage="No journal entries" sclass="card">
+			<listhead>
+				<listheader label="Date" width="110px"/>
+				<listheader label="Number" width="160px"/>
+				<listheader label="Reference" width="130px"/>
+				<listheader label="Description"/>
+				<listheader label="Status" width="100px"/>
+				<listheader label="Amount" width="150px" align="right"/>
+			</listhead>
+			<template name="model" var="entry">
+				<listitem onClick="@command('open', id=entry.id)">
+					<listcell label="@load(entry.dateText)"/>
+					<listcell label="@load(entry.entryNo)"/>
+					<listcell label="@load(entry.reference)"/>
+					<listcell label="@load(entry.description)"/>
+					<listcell label="@load(entry.status)"/>
+					<listcell label="@load(entry.totalDebitText)"/>
+				</listitem>
+			</template>
+		</listbox>
+		<paging pageSize="@load(vm.pageSize)" totalSize="@load(vm.total)" activePage="@load(vm.page)" onPaging="@command('goToPage', page=self.activePage)"/>
+	</div>
+</zk>

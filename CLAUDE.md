@@ -103,13 +103,30 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   so check every rule in the service first.
 - Jackson 3 refuses a missing primitive record component in a request body, so optional request fields must be boxed
   (`Boolean`, not `boolean`).
+- In ZK forms, bind an amount with `@load` plus `onChange="@command('setDebit', line=line, amount=self.value)"` rather
+  than `@bind` plus a second command: the order of a prompt save and a command on the same event is not something to
+  rely on.
+- `value` is reserved in ZK's `@command(...)` annotation: do not name a command parameter `value`.
+- Two ZK comboboxes must not share a `ListModels.toListSubModel` model: selection lives in the underlying list, so a
+  pick shows on every row. Give each row its own with `@init` (see `EntryViewModel.getNewAccountModel`).
+- An included page's `<?link?>` header never runs: load a module's CSS with `<style src="~./module/x.css"/>` inside the
+  root. (`frontend/task/.../main.zul` still has the old pattern; left as is.)
+- A ZK command must notify only what it changed: `@NotifyChange("*")` reloads a grid's model, which rebuilds its rows and
+  drops keyboard focus to the page. See `EntryViewModel`: amounts notify the totals and their own line.
 
 ## Testing
 
 - Backend tests use Testcontainers (Postgres), so Docker must be usable by your user (`docker ps` works without sudo).
   A new `docker` group membership only applies after logging in again.
 - `backend/task` tests boot the module alone (`TaskApiTests.TestApp`); keep it that way so the module stays standalone.
-- Frontend tests are context-load only. To exercise the UI without a database, run any stub on :8080 returning
+- Frontend tests are context-load plus unit tests of plain classes. `AccountingScreensRenderTests` also renders ZUL
+  pages through ZK's real servlets on a random port, with the REST client mocked: a wrong binding redirects instead of
+  answering 200. Copy it for new screens; MockMvc does not run ZK's servlets. It passes on hidden components too (ZK
+  sends them in its JSON) and does not click.
+- `AccountingClickPathTests` clicks: `ZkDriver` sends real AU requests to the test server, so it pins commands, which row
+  a change reached, and what is `visible`. It needs no Docker. It cannot see focus or client-side validation (a
+  constraint's error bubble, `w:onClick`), because no browser runs: those are README checklist rows 33 and 34.
+- To exercise the UI without a database, run any stub on :8080 returning
   `[{"id":1,"title":"x","description":"","done":false,"createdAt":"2026-01-01T00:00:00Z"}]` for `GET /api/tasks`.
 - Backend tests authenticate with `SecurityMockMvcRequestPostProcessors.jwt().authorities(...)` and a dummy
   `issuer-uri` property; no Keycloak is needed. Module tests still boot one module alone.
@@ -122,6 +139,8 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   tenants resolved from real signed tokens end to end, suspended/unknown/multiple organizations get no permissions.
 - Verified 2026-11-02 (`./mvnw verify`): accounting backend, including database guards bypassing the services, 20
   parallel posts with gapless numbers, and the bookkeeper/accountant path with real signed tokens.
+- Verified 2026-11-02 (`./mvnw verify`): the accounting screens render and their logic is unit-tested. Clicking through
+  them by hand is still to be done: the accounting rows (15-32) of the README checklist.
 - Verified 2026-10-28 by hand against Keycloak 26.8.1 on the home-lab (README "Manual end-to-end check" rows 1–6):
   login redirect, viewer/editor/admin permissions in the UI, logout back to the Keycloak login page, 401 + Bearer from
   the API.

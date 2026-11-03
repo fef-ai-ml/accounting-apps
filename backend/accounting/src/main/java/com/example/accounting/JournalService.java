@@ -65,7 +65,7 @@ public class JournalService {
 
 	@Transactional(readOnly = true)
 	public EntryResponse get(long id) {
-		return EntryResponse.from(load(id));
+		return response(load(id));
 	}
 
 	public EntryResponse create(EntryRequest request) {
@@ -74,7 +74,7 @@ public class JournalService {
 		JournalEntry entry = new JournalEntry(request.date(), periodOf(request.date()), request.reference(),
 				request.description(), Actor.current(), clock.instant());
 		lines.forEach(line -> entry.addLine(line.accountId(), line.side(), line.memo()));
-		return EntryResponse.from(entries.saveAndFlush(entry));
+		return response(entries.saveAndFlush(entry));
 	}
 
 	public EntryResponse update(long id, EntryRequest request) {
@@ -91,7 +91,14 @@ public class JournalService {
 		entry.getLines().clear();
 		entries.flush();
 		lines.forEach(line -> entry.addLine(line.accountId(), line.side(), line.memo()));
-		return EntryResponse.from(entries.saveAndFlush(entry));
+		return response(entries.saveAndFlush(entry));
+	}
+
+	private EntryResponse response(JournalEntry entry) {
+		boolean separate = settings.current().map(Settings::isRequireSeparatePoster).orElse(true);
+		boolean blocked = entry.getStatus() == EntryStatus.DRAFT && !JournalRules.mayPost(Actor.current().sub(),
+				entry.getCreatedBySub(), entry.getLastModifiedBySub(), separate);
+		return EntryResponse.from(entry, blocked);
 	}
 
 	public void delete(long id, long version) {
