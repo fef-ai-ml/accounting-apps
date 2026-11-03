@@ -306,4 +306,50 @@ class PostingTests extends AccountingTestSupport {
 		mvc.perform(get(path).with(as("maker", READ))).andExpect(jsonPath("$.posterBlocked").value(false));
 	}
 
+	private void editAs(String sub, long id) throws Exception {
+		mvc.perform(put("/api/accounting/journal-entries/" + id).with(as(sub, READ, WRITE)).contentType(MediaType.APPLICATION_JSON)
+				.content(entry(DATE, line(cash, "3", "0"), line(sales, "0", "3")).replaceFirst("\\{", "{\"version\": " + versionOf(id) + ", ")))
+				.andExpect(status().isOk());
+	}
+
+	@Test
+	void anyoneWhoEverEditedADraftCannotPostIt() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		editAs("early-editor", id);
+		editAs("late-editor", id);
+
+		postEntry(id, "maker").andExpect(problem(403, "separate-poster-required"))
+				.andExpect(jsonPath("$.detail").value("You prepared or edited this entry; another user must post it"));
+		postEntry(id, "early-editor").andExpect(problem(403, "separate-poster-required"));
+		postEntry(id, "late-editor").andExpect(problem(403, "separate-poster-required"));
+		mvc.perform(get("/api/accounting/journal-entries/" + id).with(as("early-editor", READ)))
+				.andExpect(jsonPath("$.posterBlocked").value(true));
+		mvc.perform(get("/api/accounting/journal-entries/" + id).with(as("checker", READ)))
+				.andExpect(jsonPath("$.posterBlocked").value(false));
+
+		postEntry(id, "checker").andExpect(status().isOk());
+	}
+
+	@Test
+	void anEarlierEditorMayPostWhenTheSettingIsOff() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		editAs("early-editor", id);
+		editAs("late-editor", id);
+		setSeparatePoster(false);
+
+		postEntry(id, "early-editor").andExpect(status().isOk());
+	}
+
+	@Test
+	void editingTwiceRecordsAnEditorOnce() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		editAs("editor", id);
+		editAs("editor", id);
+
+		String subs = inTransaction(() -> (String) entityManager.createNativeQuery(
+				"select cast(prepared_by_subs as text) from accounting.journal_entry where id = :id")
+				.setParameter("id", id).getSingleResult());
+		assertThat(subs).isEqualTo("{maker,editor}");
+	}
+
 }

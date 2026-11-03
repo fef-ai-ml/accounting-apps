@@ -99,7 +99,7 @@ public class JournalService {
 	private EntryResponse response(JournalEntry entry) {
 		boolean separate = settings.current().map(Settings::isRequireSeparatePoster).orElse(true);
 		boolean blocked = entry.getStatus() == EntryStatus.DRAFT && !JournalRules.mayPost(Actor.current().sub(),
-				entry.getCreatedBySub(), entry.getLastModifiedBySub(), separate);
+				entry.getPreparedBySubs(), separate);
 		return EntryResponse.from(entry, blocked);
 	}
 

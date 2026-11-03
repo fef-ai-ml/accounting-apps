@@ -7,6 +7,9 @@ ALTER TABLE accounting.journal_entry
     ADD COLUMN deleted_by_sub  VARCHAR(100),
     ADD COLUMN deleted_by_name VARCHAR(200);
 
+ALTER TABLE accounting.journal_entry
+    ADD COLUMN prepared_by_subs VARCHAR(100)[] NOT NULL DEFAULT '{}';
+
 ALTER TABLE accounting.journal_line
     ADD COLUMN deleted_at      TIMESTAMPTZ,
     ADD COLUMN deleted_by_sub  VARCHAR(100),
@@ -139,3 +142,10 @@ CREATE TRIGGER line_no_truncate BEFORE TRUNCATE ON accounting.journal_line
 REVOKE DELETE ON accounting.journal_entry, accounting.journal_line FROM app_runtime;
 
 -- Backfill
+
+-- Drafts only: updating a posted row would trip entry_immutable, and nothing reads this column after posting.
+-- Earlier editors were never recorded, so they cannot be recovered.
+UPDATE accounting.journal_entry
+SET prepared_by_subs = CASE WHEN created_by_sub = last_modified_by_sub THEN ARRAY[created_by_sub]
+                            ELSE ARRAY[created_by_sub, last_modified_by_sub] END
+WHERE status = 'DRAFT';

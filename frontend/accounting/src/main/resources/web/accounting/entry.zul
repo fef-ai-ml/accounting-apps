@@ -69,7 +69,7 @@
 			<button label="Post" iconSclass="z-icon-check" visible="@load(vm.saved and vm.draft and vm.canPost)" autodisable="self"
 				disabled="@load(not vm.balanced or vm.posterBlocked)"
 				w:onClick="if (jq('.z-window input[class*=-invalid]').length) event.stop();" onClick="@command('post')"/>
-			<label value="You prepared this entry; another user must post it" sclass="hint" visible="@load(vm.posterBlocked)"/>
+			<label value="You prepared or edited this entry; another user must post it" sclass="hint" visible="@load(vm.posterBlocked)"/>
 
 			<datebox valueInLocalDate="@bind(vm.reverseDate)" format="yyyy-MM-dd" placeholder="Reversal date"
 				visible="@load(vm.posted and vm.canPost)" width="130px"/>

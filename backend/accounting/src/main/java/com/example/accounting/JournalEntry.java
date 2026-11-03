@@ -21,8 +21,10 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
 import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.annotations.TenantId;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "journal_entry", schema = "accounting")
@@ -98,6 +100,10 @@ public class JournalEntry {
 	@Column(name = "deleted_by_name", length = 200)
 	private String deletedByName;
 
+	@JdbcTypeCode(SqlTypes.ARRAY)
+	@Column(name = "prepared_by_subs", nullable = false)
+	private List<String> preparedBySubs = new ArrayList<>();
+
 	@Version
 	private Long version;
 
@@ -139,6 +145,13 @@ public class JournalEntry {
 		this.lastModifiedBySub = actor.sub();
 		this.lastModifiedByName = actor.name();
 		this.lastModifiedAt = at;
+		if (!preparedBySubs.contains(actor.sub())) {
+			preparedBySubs.add(actor.sub());
+		}
+	}
+
+	List<String> getPreparedBySubs() {
+		return preparedBySubs;
 	}
 
 	void addLine(Long accountId, Side side, String memo) {
