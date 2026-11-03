@@ -10,7 +10,7 @@ ever hard deleted, maker/checker covers every editor of a draft, and accountants
 
 - Anyone who ever edited a draft cannot post it, when maker/checker is on.
 - No journal line is ever hard deleted.
-- Account changes are audited: code, name, parent and active. Draft edits are not.
+- Account changes are audited: code, name, type, parent, postable and active. Draft edits are not.
 - The audit log gets a read API and a screen, for accountant and admin only.
 - A reversal can still be reversed. `Asia/Jakarta` stays. Typing `11` then Tab stays.
 
@@ -143,7 +143,7 @@ cycle.
 
 **Recording.** New action `ACCOUNT_CHANGE`; the migration replaces the `audit_log` action `CHECK`. `AccountService.update`
 writes one row holding only the fields that changed, as `{"name": {"from": "Kas", "to": "Kas Kecil"}}`, for `code`, `name`,
-`parent` and `active`. `parent` is recorded as the account code, or `null` at the top level. No change, no row.
+`type`, `parent`, `postable` and `active`. `parent` is recorded as the account code, or `null` at the top level. No change, no row.
 
 **API.** `GET /api/accounting/audit?from&to&action&page&size`, requiring new permission `accounting:audit-read`, mapped
 to ACCOUNTANT and ADMIN by `iam/V20261103_1__add_audit_read_permission.sql`.

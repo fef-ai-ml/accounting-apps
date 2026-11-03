@@ -76,9 +76,11 @@ public class AccountService {
 		Map<String, Map<String, Object>> changes = new LinkedHashMap<>();
 		note(changes, "code", account.getCode(), request.code());
 		note(changes, "name", account.getName(), request.name());
+		note(changes, "type", account.getType(), request.type());
 		if (!Objects.equals(account.getParentId(), request.parentId())) {
 			note(changes, "parent", codeOf(account.getParentId()), codeOf(request.parentId()));
 		}
+		note(changes, "postable", account.isPostable(), request.postable());
 		note(changes, "active", account.isActive(), active);
 		return changes;
 	}

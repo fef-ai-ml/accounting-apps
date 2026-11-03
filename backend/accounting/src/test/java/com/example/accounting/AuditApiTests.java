@@ -99,6 +99,34 @@ class AuditApiTests extends AccountingTestSupport {
 	}
 
 	@Test
+	void aTypeChangeRecordsOnlyTheType() throws Exception {
+		long cash = account("1110");
+		putAccount(cash, """
+				{"code": "1110", "name": "Kas", "type": "LIABILITY", "parentId": %d, "postable": true}
+				""".formatted(account("1100"))).andExpect(status().isOk());
+
+		changes().andExpect(jsonPath("$.items", hasSize(1)))
+				.andExpect(jsonPath("$.items[0].details.type.from").value("ASSET"))
+				.andExpect(jsonPath("$.items[0].details.type.to").value("LIABILITY"))
+				.andExpect(jsonPath("$.items[0].details.postable").doesNotExist())
+				.andExpect(jsonPath("$.items[0].details.name").doesNotExist());
+	}
+
+	@Test
+	void aPostableChangeRecordsOnlyPostable() throws Exception {
+		long cash = account("1110");
+		putAccount(cash, """
+				{"code": "1110", "name": "Kas", "type": "ASSET", "parentId": %d, "postable": false}
+				""".formatted(account("1100"))).andExpect(status().isOk());
+
+		changes().andExpect(jsonPath("$.items", hasSize(1)))
+				.andExpect(jsonPath("$.items[0].details.postable.from").value(true))
+				.andExpect(jsonPath("$.items[0].details.postable.to").value(false))
+				.andExpect(jsonPath("$.items[0].details.type").doesNotExist())
+				.andExpect(jsonPath("$.items[0].details.name").doesNotExist());
+	}
+
+	@Test
 	void aRefusedChangeRecordsNothing() throws Exception {
 		putAccount(account("1110"), body("1120", "Kas", account("1100"), null)).andExpect(status().is4xxClientError());
 
