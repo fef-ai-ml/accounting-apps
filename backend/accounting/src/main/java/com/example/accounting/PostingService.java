@@ -48,7 +48,7 @@ public class PostingService {
 		JournalRules.checkBalanced(entry.sides());
 		journal.checkAccountsUsable(entry.getLines().stream().map(JournalLine::getAccountId).toList());
 		lockOpenPeriod(entry.getEntryDate());
-		if (!JournalRules.mayPost(actor.sub(), entry.getPreparedBySubs(),
+		if (!JournalRules.mayPost(actor.sub(), entry.preparers(),
 				current.isRequireSeparatePoster())) {
 			throw AccountingException.forbidden("separate-poster-required",
 					"You prepared or edited this entry; another user must post it");

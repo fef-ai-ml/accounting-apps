@@ -362,4 +362,17 @@ class PostingTests extends AccountingTestSupport {
 
 		reverse(reversal, "{\"date\": \"" + DATE + "\"}").andExpect(status().isOk());
 	}
+	@Test
+	void aDraftWithNoRecordedPreparersStillBlocksItsMaker() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		inTransaction(() -> entityManager.createNativeQuery(
+				"update accounting.journal_entry set prepared_by_subs = '{}' where id = :id")
+				.setParameter("id", id).executeUpdate());
+
+		postEntry(id, "maker").andExpect(problem(403, "separate-poster-required"));
+		mvc.perform(get("/api/accounting/journal-entries/" + id).with(as("maker", READ)))
+				.andExpect(jsonPath("$.posterBlocked").value(true));
+		postEntry(id, "checker").andExpect(status().isOk());
+	}
+
 }

@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import jakarta.persistence.CascadeType;
@@ -150,8 +152,12 @@ public class JournalEntry {
 		}
 	}
 
-	List<String> getPreparedBySubs() {
-		return preparedBySubs;
+	/** Never empty: a draft written without the list (old instance, raw SQL) must still block its own maker. */
+	Set<String> preparers() {
+		Set<String> all = new HashSet<>(preparedBySubs);
+		all.add(createdBySub);
+		all.add(lastModifiedBySub);
+		return all;
 	}
 
 	void addLine(Long accountId, Side side, String memo) {
