@@ -227,6 +227,33 @@ class NoHardDeleteTests extends AccountingTestSupport {
 	}
 
 	@Test
+	void aRemovedLineCannotBeInsertedOnADeletedEntry() throws Exception {
+		long id = draft("maker", DATE, line(cash, "1", "0"), line(sales, "0", "1"));
+		deleteDraft(id, versionOf(id)).andExpect(status().isNoContent());
+
+		assertThatThrownBy(() -> inTransaction(() -> entityManager.createNativeQuery("""
+				insert into accounting.journal_line (tenant_id, entry_id, line_no, account_id, debit, credit,
+				                                     deleted_at, deleted_by_sub, deleted_by_name)
+				values (cast(:tenant as uuid), :entry, 9, :account, 1, 0, now(), 's', 'n')
+				""").setParameter("tenant", tenant.toString()).setParameter("entry", id)
+				.setParameter("account", cash).executeUpdate()))
+				.hasStackTraceContaining("is deleted and cannot take lines");
+	}
+
+	@Test
+	void aLineCannotBeMovedToADeletedEntryEvenWhileBeingRemoved() throws Exception {
+		long gone = draft("maker", DATE, line(cash, "1", "0"), line(sales, "0", "1"));
+		deleteDraft(gone, versionOf(gone)).andExpect(status().isNoContent());
+		long live = draft("maker", DATE, line(cash, "1", "0"), line(sales, "0", "1"));
+
+		assertThatThrownBy(() -> inTransaction(() -> entityManager.createNativeQuery("""
+				update accounting.journal_line set entry_id = :gone, deleted_at = now(), deleted_by_sub = 's',
+				       deleted_by_name = 'n' where entry_id = :live and line_no = 1
+				""").setParameter("gone", gone).setParameter("live", live).executeUpdate()))
+				.hasStackTraceContaining("is deleted and cannot take lines");
+	}
+
+	@Test
 	void aDeletedEntryCannotBePosted() throws Exception {
 		long id = draft("maker", DATE, line(cash, "1", "0"), line(sales, "0", "1"));
 		deleteDraft(id, versionOf(id)).andExpect(status().isNoContent());

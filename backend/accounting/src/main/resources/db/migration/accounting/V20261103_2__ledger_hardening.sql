@@ -97,8 +97,10 @@ BEGIN
     IF parent_status IN ('POSTED', 'REVERSED') THEN
         RAISE EXCEPTION 'lines of journal entry % are % and cannot be changed', NEW.entry_id, parent_status;
     END IF;
-    -- Deleting a draft marks the entry and its lines in one transaction, in whichever order Hibernate flushes them.
-    IF parent_deleted IS NOT NULL AND NEW.deleted_at IS NULL THEN
+    -- Deleting a draft marks the entry and its lines in one transaction, in whichever order Hibernate flushes them,
+    -- so only a soft delete of a line already on the entry may pass.
+    IF parent_deleted IS NOT NULL
+       AND (TG_OP = 'INSERT' OR NEW.entry_id <> OLD.entry_id OR NEW.deleted_at IS NULL) THEN
         RAISE EXCEPTION 'journal entry % is deleted and cannot take lines', NEW.entry_id;
     END IF;
     RETURN NEW;
