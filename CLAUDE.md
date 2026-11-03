@@ -139,13 +139,16 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   tenants resolved from real signed tokens end to end, suspended/unknown/multiple organizations get no permissions.
 - Verified 2026-11-02 (`./mvnw verify`): accounting backend, including database guards bypassing the services, 20
   parallel posts with gapless numbers, and the bookkeeper/accountant path with real signed tokens.
-- Verified 2026-11-02 (`./mvnw verify`): the accounting screens render and their logic is unit-tested. Clicking through
-  them by hand is still to be done: the accounting rows (15-32) of the README checklist.
+- Verified 2026-11-03 (`./mvnw verify`): the accounting screens render, their logic is unit-tested, and their click
+  paths run through real ZK over AU.
 - Verified 2026-10-28 by hand against Keycloak 26.8.1 on the home-lab (README "Manual end-to-end check" rows 1–6):
   login redirect, viewer/editor/admin permissions in the UI, logout back to the Keycloak login page, 401 + Bearer from
   the API.
 - Verified 2026-11-02 by hand on the home-lab (rows 11–14): `acme-admin` sees none of demo's tasks, a suspended tenant
   and a user in no organization see "no access", tasks from before the upgrade still show for demo users.
+- Verified 2026-11-03 by hand on the home-lab (rows 15–36): the accounting screens through the shell with Keycloak,
+  including keyboard-only keying, a refused invalid amount, a form left past the session timeout, and CSV in Excel for
+  Mac (region Indonesia). Not run: CSV in Windows Excel with Indonesian settings.
 - Not yet verified by hand: README checklist rows 7–10 (backend down, ZK session timeout, silent token refresh,
   Keycloak session ended).
 - Not built yet: see "Follow-ups" in `docs/superpowers/specs/2026-10-28-auth-keycloak-iam-design.md` (admin UI for
