@@ -63,4 +63,32 @@ class AuditLog {
 		this.details = details;
 	}
 
+	Long getId() {
+		return id;
+	}
+
+	AuditAction getAction() {
+		return action;
+	}
+
+	String getEntity() {
+		return entity;
+	}
+
+	Long getEntityId() {
+		return entityId;
+	}
+
+	String getActorName() {
+		return actorName;
+	}
+
+	Instant getAt() {
+		return at;
+	}
+
+	String getDetails() {
+		return details;
+	}
+
 }

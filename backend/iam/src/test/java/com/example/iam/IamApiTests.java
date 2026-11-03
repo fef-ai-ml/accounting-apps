@@ -69,7 +69,7 @@ class IamApiTests {
 		assertThat(resolver.permissionsForRoles(Set.of("EDITOR"))).containsExactlyInAnyOrder("task:read", "task:write");
 		assertThat(resolver.permissionsForRoles(Set.of("ADMIN"))).containsExactlyInAnyOrder("task:read", "task:write",
 				"task:delete", "iam:read", "accounting:read", "accounting:write", "accounting:post",
-				"accounting:period-manage", "accounting:account-manage");
+				"accounting:period-manage", "accounting:account-manage", "accounting:audit-read");
 	}
 
 	@Test
@@ -83,7 +83,7 @@ class IamApiTests {
 		assertThat(resolver.permissionsForRoles(Set.of("BOOKKEEPER")))
 				.containsExactlyInAnyOrder("accounting:read", "accounting:write");
 		assertThat(resolver.permissionsForRoles(Set.of("ACCOUNTANT"))).containsExactlyInAnyOrder("accounting:read",
-				"accounting:write", "accounting:post", "accounting:period-manage");
+				"accounting:write", "accounting:post", "accounting:period-manage", "accounting:audit-read");
 	}
 
 	@Test
@@ -206,8 +206,8 @@ class IamApiTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[0].role").value("ACCOUNTANT"))
 				.andExpect(jsonPath("$[1].role").value("ADMIN"))
-				.andExpect(jsonPath("$[1].permissions", contains("accounting:account-manage", "accounting:period-manage",
-						"accounting:post", "accounting:read", "accounting:write", "iam:read", "task:delete", "task:read",
+				.andExpect(jsonPath("$[1].permissions", contains("accounting:account-manage", "accounting:audit-read",
+						"accounting:period-manage", "accounting:post", "accounting:read", "accounting:write", "iam:read", "task:delete", "task:read",
 						"task:write")))
 				.andExpect(jsonPath("$[2].role").value("BOOKKEEPER"))
 				.andExpect(jsonPath("$[3].role").value("EDITOR"))

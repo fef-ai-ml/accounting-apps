@@ -49,6 +49,14 @@ public class JournalService {
 
 	@Transactional(readOnly = true)
 	public EntryPage list(LocalDate from, LocalDate to, EntryStatus status, Long accountId, String q, int page, int size) {
+		checkPaging(page, size);
+		checkDates(from, to);
+		Page<JournalEntry> result = entries.findAll(filter(from, to, status, accountId, q),
+				PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "entryDate", "id")));
+		return new EntryPage(result.stream().map(EntrySummary::from).toList(), result.getTotalElements(), page, size);
+	}
+
+	static void checkPaging(int page, int size) {
 		if (size < 1 || size > MAX_PAGE_SIZE || page < 0) {
 			throw AccountingException.badRequest("validation",
 					"page must not be negative and size must be between 1 and " + MAX_PAGE_SIZE);
@@ -56,12 +64,12 @@ public class JournalService {
 		if ((long) page * size > Integer.MAX_VALUE) {
 			throw AccountingException.badRequest("validation", "page is too large");
 		}
+	}
+
+	static void checkDates(LocalDate from, LocalDate to) {
 		if (from != null && to != null && from.isAfter(to)) {
 			throw AccountingException.badRequest("validation", "from must not be after to");
 		}
-		Page<JournalEntry> result = entries.findAll(filter(from, to, status, accountId, q),
-				PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "entryDate", "id")));
-		return new EntryPage(result.stream().map(EntrySummary::from).toList(), result.getTotalElements(), page, size);
 	}
 
 	@Transactional(readOnly = true)

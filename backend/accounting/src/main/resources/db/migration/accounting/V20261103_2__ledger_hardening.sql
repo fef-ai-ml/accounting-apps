@@ -26,6 +26,10 @@ ALTER TABLE accounting.journal_line
     ADD CHECK ((deleted_at IS NULL) = (deleted_by_sub IS NULL)),
     ADD CHECK ((deleted_at IS NULL) = (deleted_by_name IS NULL));
 
+ALTER TABLE accounting.audit_log DROP CONSTRAINT audit_log_action_check;
+ALTER TABLE accounting.audit_log ADD CONSTRAINT audit_log_action_check
+    CHECK (action IN ('SETUP', 'POST', 'REVERSE', 'PERIOD_CLOSE', 'PERIOD_REOPEN', 'SETTING_CHANGE', 'ACCOUNT_CHANGE'));
+
 -- A saved draft reuses line numbers, so only live lines must be unique.
 ALTER TABLE accounting.journal_line DROP CONSTRAINT journal_line_tenant_id_entry_id_line_no_key;
 CREATE UNIQUE INDEX journal_line_live_no_idx ON accounting.journal_line (tenant_id, entry_id, line_no)

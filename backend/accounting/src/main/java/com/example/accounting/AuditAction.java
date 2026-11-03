@@ -1,7 +1,7 @@
 package com.example.accounting;
 
-enum AuditAction {
+public enum AuditAction {
 
-	SETUP, POST, REVERSE, PERIOD_CLOSE, PERIOD_REOPEN, SETTING_CHANGE
+	SETUP, POST, REVERSE, PERIOD_CLOSE, PERIOD_REOPEN, SETTING_CHANGE, ACCOUNT_CHANGE
 
 }

@@ -1,6 +1,9 @@
 package com.example.accounting;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -14,9 +17,12 @@ public class AccountService {
 
 	private final AccountingSettings settings;
 
-	AccountService(AccountRepository accounts, AccountingSettings settings) {
+	private final AuditTrail audit;
+
+	AccountService(AccountRepository accounts, AccountingSettings settings, AuditTrail audit) {
 		this.accounts = accounts;
 		this.settings = settings;
+		this.audit = audit;
 	}
 
 	@Transactional(readOnly = true)
@@ -48,8 +54,12 @@ public class AccountService {
 					"The type and postability of an account with journal lines cannot change");
 		}
 		// Unlike create, a PUT without active keeps the current value rather than reactivating the account.
-		account.update(request.code(), request.name(), request.type(), request.parentId(), request.postable(),
-				request.active() != null ? request.active() : account.isActive());
+		boolean active = request.active() != null ? request.active() : account.isActive();
+		Map<String, Map<String, Object>> changes = changes(account, request, active);
+		account.update(request.code(), request.name(), request.type(), request.parentId(), request.postable(), active);
+		if (!changes.isEmpty()) {
+			audit.record(AuditAction.ACCOUNT_CHANGE, "account", id, changes);
+		}
 		return AccountResponse.from(account);
 	}
 
@@ -60,6 +70,31 @@ public class AccountService {
 					"An account used by journal lines, even in deleted drafts, or with child accounts cannot be deleted");
 		}
 		accounts.delete(account);
+	}
+
+	private Map<String, Map<String, Object>> changes(Account account, AccountRequest request, boolean active) {
+		Map<String, Map<String, Object>> changes = new LinkedHashMap<>();
+		note(changes, "code", account.getCode(), request.code());
+		note(changes, "name", account.getName(), request.name());
+		if (!Objects.equals(account.getParentId(), request.parentId())) {
+			note(changes, "parent", codeOf(account.getParentId()), codeOf(request.parentId()));
+		}
+		note(changes, "active", account.isActive(), active);
+		return changes;
+	}
+
+	private static void note(Map<String, Map<String, Object>> changes, String field, Object from, Object to) {
+		if (!Objects.equals(from, to)) {
+			// Not Map.of: a parent is null at the top level.
+			Map<String, Object> change = new LinkedHashMap<>();
+			change.put("from", from);
+			change.put("to", to);
+			changes.put(field, change);
+		}
+	}
+
+	private String codeOf(Long id) {
+		return id == null ? null : get(id).getCode();
 	}
 
 	private Account get(long id) {
