@@ -15,6 +15,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class KeycloakJwtAuthenticationConverterTests {
 
+	private static final UUID DEMO = UUID.fromString("7f3a0c4e-1b2d-4e5f-8a9b-0c1d2e3f4a5b");
+
+	private static Map<String, Object> demoTenant() {
+		return Map.of("demo", Map.of("id", DEMO.toString()));
+	}
+
 	private static Jwt jwt(Map<String, Object> claims) {
 		return Jwt.withTokenValue("token").header("alg", "none").subject("sub-123").claims(c -> c.putAll(claims)).build();
 	}
@@ -39,8 +45,8 @@ class KeycloakJwtAuthenticationConverterTests {
 		var converter = new KeycloakJwtAuthenticationConverter(token -> {
 			seen.set(token);
 			return Set.of("task:write", "task:read");
-		}, TenantDirectory.none());
-		Jwt token = jwt(Map.of("preferred_username", "editor"));
+		}, DEMO::equals);
+		Jwt token = jwt(Map.of("preferred_username", "editor", "tenant", demoTenant()));
 
 		AbstractAuthenticationToken authentication = converter.convert(token);
 
@@ -49,6 +55,23 @@ class KeycloakJwtAuthenticationConverterTests {
 				.containsExactly("task:read", "task:write");
 		assertThat(authentication.getName()).isEqualTo("editor");
 		assertThat(authentication.isAuthenticated()).isTrue();
+	}
+
+	@Test
+	void noActiveTenantGetsNoAuthoritiesAndTheResolverIsNotAsked() {
+		AtomicReference<Jwt> asked = new AtomicReference<>();
+		var converter = new KeycloakJwtAuthenticationConverter(token -> {
+			asked.set(token);
+			return Set.of("task:read");
+		}, DEMO::equals);
+
+		var noClaim = converter.convert(jwt(Map.of("preferred_username", "u")));
+		var unknown = converter.convert(jwt(Map.of("tenant", Map.of("other", Map.of("id", UUID.randomUUID().toString())))));
+
+		assertThat(noClaim.getAuthorities()).isEmpty();
+		assertThat(unknown.getAuthorities()).isEmpty();
+		assertThat(noClaim.isAuthenticated()).isTrue();
+		assertThat(asked.get()).isNull();
 	}
 
 	@Test

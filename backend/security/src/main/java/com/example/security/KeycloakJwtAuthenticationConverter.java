@@ -27,12 +27,13 @@ public class KeycloakJwtAuthenticationConverter implements Converter<Jwt, Abstra
 
 	@Override
 	public AbstractAuthenticationToken convert(Jwt jwt) {
-		List<GrantedAuthority> authorities = permissionResolver.permissionsFor(jwt).stream()
+		UUID tenantId = KeycloakTenant.activeTenant(jwt, tenantDirectory).orElse(null);
+		// Roles act inside the user's tenant only; without an active tenant they grant nothing.
+		List<GrantedAuthority> authorities = tenantId == null ? List.of() : permissionResolver.permissionsFor(jwt).stream()
 				.sorted()
 				.<GrantedAuthority>map(SimpleGrantedAuthority::new)
 				.toList();
 		String username = jwt.getClaimAsString("preferred_username");
-		UUID tenantId = KeycloakTenant.activeTenant(jwt, tenantDirectory).orElse(null);
 		return new KeycloakAuthentication(jwt, authorities, username != null ? username : jwt.getSubject(), tenantId);
 	}
 
