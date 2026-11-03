@@ -96,4 +96,32 @@ class AccountingApiClientTests {
 		server.verify();
 	}
 
+	@Test
+	void auditSendsOnlyTheFiltersInUseAndReadsTheRow() {
+		server.expect(requestTo(BASE + "/audit?from=2026-03-01&action=POST&page=1&size=50")).andRespond(withSuccess("""
+				{"items": [{"at": "2026-03-14T17:30:00Z", "actorName": "Akuntan", "action": "POST", "entity": "journal_entry",
+				 "entityId": 5, "details": {"name": {"from": "Kas", "to": "Kas Kecil"}, "totalDebit": "10000000.00"}}],
+				 "total": 51, "page": 1, "size": 50}
+				""", MediaType.APPLICATION_JSON));
+
+		AuditPageDto page = client.audit(LocalDate.of(2026, 3, 1), null, "POST", 1, 50);
+
+		assertThat(page.total()).isEqualTo(51);
+		AuditRowDto row = page.items().get(0);
+		assertThat(row.getAtText()).isEqualTo("2026-03-15 00:30:00");
+		assertThat(row.getRecord()).isEqualTo("journal_entry 5");
+		assertThat(row.getDetailsText()).isEqualTo("name: Kas → Kas Kecil, totalDebit: 10000000.00");
+		server.verify();
+	}
+
+	@Test
+	void auditWithNoFiltersSendsOnlyThePage() {
+		server.expect(requestTo(BASE + "/audit?page=0&size=50")).andRespond(withSuccess("""
+				{"items": [], "total": 0, "page": 0, "size": 50}
+				""", MediaType.APPLICATION_JSON));
+
+		assertThat(client.audit(null, null, "", 0, 50).items()).isEmpty();
+		server.verify();
+	}
+
 }

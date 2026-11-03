@@ -38,4 +38,9 @@ public class AccountingUiModule {
 		return UiModule.embedded("accounting-reports", "Reports", 23, "~./accounting/reports.zul").withPermission(READ);
 	}
 
+	@Bean
+	UiModule accountingAuditUi() {
+		return UiModule.embedded("accounting-audit", "Audit", 24, "~./accounting/audit.zul").withPermission("accounting:audit-read");
+	}
+
 }

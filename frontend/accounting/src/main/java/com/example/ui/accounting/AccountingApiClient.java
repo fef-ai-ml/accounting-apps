@@ -83,6 +83,16 @@ public class AccountingApiClient {
 				.build()).retrieve().body(EntryPageDto.class);
 	}
 
+	public AuditPageDto audit(LocalDate from, LocalDate to, String action, int page, int size) {
+		return client.get().uri(uri -> uri.path(PATH + "/audit")
+				.queryParamIfPresent("from", Optional.ofNullable(from))
+				.queryParamIfPresent("to", Optional.ofNullable(to))
+				.queryParamIfPresent("action", Optional.ofNullable(action).filter(a -> !a.isBlank()))
+				.queryParam("page", page)
+				.queryParam("size", size)
+				.build()).retrieve().body(AuditPageDto.class);
+	}
+
 	public EntryDto entry(long id) {
 		return client.get().uri(ENTRIES + "/{id}", id).retrieve().body(EntryDto.class);
 	}

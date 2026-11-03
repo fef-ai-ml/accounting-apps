@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zk>
+	<style src="~./accounting/accounting.css"/>
+	<div viewModel="@id('vm') @init('com.example.ui.accounting.AuditViewModel')" sclass="accounting">
+		<hlayout sclass="filters card">
+			<datebox valueInLocalDate="@bind(vm.from)" format="yyyy-MM-dd" placeholder="From" width="120px"/>
+			<datebox valueInLocalDate="@bind(vm.to)" format="yyyy-MM-dd" placeholder="To" width="120px"/>
+			<combobox value="@bind(vm.action)" model="@load(vm.actions)" readonly="true" placeholder="Any action" width="170px">
+				<template name="model"><comboitem label="@load(each)"/></template>
+			</combobox>
+			<button label="Search" iconSclass="z-icon-search" onClick="@command('search')"/>
+		</hlayout>
+
+		<listbox model="@load(vm.rows)" emptyMessage="No audit records" sclass="card">
+			<listhead>
+				<listheader label="Time" width="170px"/>
+				<listheader label="Who" width="160px"/>
+				<listheader label="Action" width="150px"/>
+				<listheader label="Record" width="160px"/>
+				<listheader label="Details"/>
+			</listhead>
+			<template name="model" var="row">
+				<listitem>
+					<listcell label="@load(row.atText)"/>
+					<listcell label="@load(row.actorName)"/>
+					<listcell label="@load(row.action)"/>
+					<listcell label="@load(row.record)"/>
+					<listcell label="@load(row.detailsText)"/>
+				</listitem>
+			</template>
+		</listbox>
+		<paging pageSize="@load(vm.pageSize)" totalSize="@load(vm.total)" activePage="@load(vm.page)" onPaging="@command('goToPage', page=self.activePage)"/>
+	</div>
+</zk>
