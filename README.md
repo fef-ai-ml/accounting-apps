@@ -80,21 +80,6 @@ once: `docker exec <postgres-container> psql -U app -d app -c 'CREATE DATABASE k
   next backend start). Rows edited directly in `iam.role_permission` reach running backends within 60 seconds; the UI
   picks them up at the next login.
 
-### Before upgrading a database that holds accounting data
-
-The ledger hardening migration checks existing rows, so bad data would stop the backend from starting. None is expected. To check first, run this read-only query as `app`; every count must be 0:
-
-```sql
-select
-  (select count(*) from accounting.journal_entry where (status = 'DRAFT') <> (entry_no is null)) as number_mismatch,
-  (select count(*) from (select 1 from accounting.journal_entry where reversal_of is not null
-                         group by tenant_id, reversal_of having count(*) > 1) d) as double_reversals,
-  (select count(*) from accounting.journal_entry e where e.reversal_of is not null and not exists
-     (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversal_of)) as bad_reversal_of,
-  (select count(*) from accounting.journal_entry e where e.reversed_by is not null and not exists
-     (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversed_by)) as bad_reversed_by;
-```
-
 ### Manual end-to-end check
 
 Run this after changes to login, permissions or the ZK wiring; the automated tests cannot cover the browser, Keycloak
@@ -148,8 +133,8 @@ Use a private browser window per user, at `http://localhost:8081`:
 | 35 | Open **New entry**, type something, and leave it idle past the session timeout; then try to leave the page, and separately to save | The work is lost, by decision (no keep-alive: an idle session must still expire). The browser warns before leaving; Save says "Your login has expired. This entry was not saved." where the login, not only the ZK session, is what failed |
 | 36 | Open a report's CSV in Excel with Indonesian regional settings | Seen 2026-11-03 in Excel for Mac (English language, region Indonesia): columns split and amounts are numbers. Not run on Windows Excel with Indonesian settings; reasoned only: a comma-separated file with dot decimals may open in one column there; check whether Data > From Text is needed |
 | 37 | Log in as an accountant and an admin: open **Audit**. Log in as a bookkeeper and a viewer | Accountant and admin see the menu item and the log. Bookkeeper and viewer do not see it |
-| 38 | As an admin, rename an account (or change its type or postable flag), then open **Audit** and filter by `ACCOUNT_CHANGE` | One row per change, with your name, Jakarta time and `name: old → new` (likewise for type and postable) |
-| 39 | Create a draft as one user, save it as a second user, then save it as a third. Open it as each | All three see "You prepared or edited this entry; another user must post it" and cannot post; a fourth user can |
+| 38 | As an admin, rename an account, then open **Audit** and filter by `ACCOUNT_CHANGE`. Also change the type and the postable flag of a fresh account with no journal lines (on an account with lines these two fail with 409 `account-in-use`) | One row per change, with your name, Jakarta time and `name: old → new` (likewise for type and postable) |
+| 39 | As `bookkeeper`, create a balanced draft. Save it as `accountant`, then save it again as `bookkeeper`. Open it as `accountant`, then as `admin` | `accountant`, who is neither its creator nor its last editor, sees "You prepared or edited this entry; another user must post it" and cannot post; `admin` can post |
 | 40 | Save a draft with changed lines, delete another draft, then query `select count(*) from accounting.journal_line where deleted_at is not null` as `app` | The count grew; neither draft's old lines show on any screen |
 
 If you are sent back to the login page after every login, the shell log shows `API call unauthorized` with the
@@ -213,6 +198,23 @@ until it is onboarded as a new tenant under an unused alias (onboarding step 1).
 4. The `BOOKKEEPER` and `ACCOUNTANT` roles and users come with the realm file, so re-import the realm as in step 2 (or
    add them in the admin console), and log in again.
 
+#### Before upgrading a database that holds accounting data
+
+The ledger hardening migration checks existing rows, so bad data would stop the backend from starting. None is expected. To check first, run this read-only query as `app`, the owner; every count must be 0. Run as any other non-superuser role, such as `app_runtime`, row-level security hides every row, so all four counts read 0 and the database falsely looks clean:
+
+```sql
+select
+  (select count(*) from accounting.journal_entry where (status = 'DRAFT') <> (entry_no is null)) as number_mismatch,
+  (select count(*) from (select 1 from accounting.journal_entry where reversal_of is not null
+                         group by tenant_id, reversal_of having count(*) > 1) d) as double_reversals,
+  (select count(*) from accounting.journal_entry e where e.reversal_of is not null and not exists
+     (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversal_of)) as bad_reversal_of,
+  (select count(*) from accounting.journal_entry e where e.reversed_by is not null and not exists
+     (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversed_by)) as bad_reversed_by;
+```
+
+Drafts that existed before the migration only know their creator and last editor, because earlier editors were never recorded.
+
 ## Accounting
 
 Phase 1 of the accounting module (`backend/accounting`, schema `accounting`): a chart of accounts copied from a
@@ -240,6 +242,7 @@ or a row, and from Periods when closing a month is blocked by a draft; the shell
 | `POST /api/accounting/journal-entries/{id}/post`, `/reverse` | `post` | `post` takes the required `?version=` the checker reviewed (409 `version-conflict` if the draft changed); reverse body `{date, copyToDraft}`, and the date cannot precede the original entry |
 | `GET /api/accounting/reports/trial-balance?asOf=` | `read` | Totals and difference |
 | `GET /api/accounting/reports/general-ledger?accountId&from&to` | `read` | Opening, running and closing balance |
+| `GET /api/accounting/audit?from&to&action&page&size` | `audit-read` | Paged, `size` default 50 |
 
 Amounts are JSON strings with two decimals (`"1665000.00"`). Every error carries a stable `code`.
 
