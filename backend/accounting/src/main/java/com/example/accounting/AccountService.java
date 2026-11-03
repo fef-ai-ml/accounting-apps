@@ -43,7 +43,7 @@ public class AccountService {
 			throw AccountingException.badRequest("validation", "An account with children cannot be postable");
 		}
 		boolean structureChanges = account.getType() != request.type() || account.isPostable() != request.postable();
-		if (structureChanges && accounts.hasLines(id)) {
+		if (structureChanges && accounts.hasLiveLines(id)) {
 			throw AccountingException.conflict("account-in-use",
 					"The type and postability of an account with journal lines cannot change");
 		}
@@ -57,7 +57,7 @@ public class AccountService {
 		Account account = get(id);
 		if (accounts.hasLines(id) || accounts.existsByParentId(id)) {
 			throw AccountingException.conflict("account-in-use",
-					"An account with journal lines or child accounts cannot be deleted");
+					"An account used by journal lines, even in deleted drafts, or with child accounts cannot be deleted");
 		}
 		accounts.delete(account);
 	}

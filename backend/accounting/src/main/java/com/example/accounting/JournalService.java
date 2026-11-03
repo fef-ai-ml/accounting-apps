@@ -1,6 +1,7 @@
 package com.example.accounting;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -85,10 +86,11 @@ public class JournalService {
 		}
 		requireVersion(entry, request.version());
 		List<ValidLine> lines = validated(request.lines());
-		entry.edit(request.date(), periodOf(request.date()), request.reference(), request.description(),
-				Actor.current(), clock.instant());
-		// Hibernate inserts before it deletes, which would trip UNIQUE (tenant_id, entry_id, line_no).
-		entry.getLines().clear();
+		Actor actor = Actor.current();
+		Instant now = clock.instant();
+		entry.edit(request.date(), periodOf(request.date()), request.reference(), request.description(), actor, now);
+		entry.removeLines(actor, now);
+		// Hibernate inserts before it updates, which would trip the unique index on live line numbers.
 		entries.flush();
 		lines.forEach(line -> entry.addLine(line.accountId(), line.side(), line.memo()));
 		return response(entries.saveAndFlush(entry));
@@ -105,7 +107,7 @@ public class JournalService {
 		JournalEntry entry = load(id);
 		requireDraft(entry);
 		requireVersion(entry, version);
-		entries.delete(entry);
+		entry.markDeleted(Actor.current(), clock.instant());
 	}
 
 	public JournalEntry load(long id) {

@@ -21,10 +21,12 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
 import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.annotations.TenantId;
 
 @Entity
 @Table(name = "journal_entry", schema = "accounting")
+@SQLRestriction("deleted_at is null")
 public class JournalEntry {
 
 	@Id
@@ -87,15 +89,39 @@ public class JournalEntry {
 	@Column(name = "posted_at")
 	private Instant postedAt;
 
+	@Column(name = "deleted_at")
+	private Instant deletedAt;
+
+	@Column(name = "deleted_by_sub", length = 100)
+	private String deletedBySub;
+
+	@Column(name = "deleted_by_name", length = 200)
+	private String deletedByName;
+
 	@Version
 	private Long version;
 
-	@OneToMany(mappedBy = "entry", cascade = CascadeType.ALL, orphanRemoval = true)
+	// No REMOVE and no orphanRemoval: Hibernate must have no path to deleting a line.
+	@OneToMany(mappedBy = "entry", cascade = { CascadeType.PERSIST, CascadeType.MERGE })
 	@OrderBy("lineNo")
 	@BatchSize(size = 200)
+	@SQLRestriction("deleted_at is null")
 	private List<JournalLine> lines = new ArrayList<>();
 
 	protected JournalEntry() {
+	}
+
+	/** Marks every live line removed and empties the list; flush before adding lines, Hibernate inserts before it updates. */
+	void removeLines(Actor actor, Instant at) {
+		lines.forEach(line -> line.markDeleted(actor, at));
+		lines.clear();
+	}
+
+	void markDeleted(Actor actor, Instant at) {
+		this.deletedAt = at;
+		this.deletedBySub = actor.sub();
+		this.deletedByName = actor.name();
+		removeLines(actor, at);
 	}
 
 	JournalEntry(LocalDate entryDate, Long periodId, String reference, String description, Actor actor, Instant at) {

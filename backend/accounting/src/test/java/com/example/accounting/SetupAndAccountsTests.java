@@ -196,4 +196,23 @@ class SetupAndAccountsTests extends AccountingTestSupport {
 		mvc.perform(post("/api/accounting/setup").with(asTenant(other, "o", ACCOUNT_MANAGE))).andExpect(status().isOk());
 	}
 
+	@Test
+	void anAccountUsedOnlyByADeletedDraftCanChangeTypeButCannotBeDeleted() throws Exception {
+		setup();
+		long cash = accountId("1110");
+		inTransaction(() -> {
+			long period = ((Number) entityManager.createNativeQuery(
+					"select min(id) from accounting.fiscal_period").getSingleResult()).longValue();
+			long entry = insertEntry(period, "DRAFT");
+			insertLine(entry, 1, cash, "1.00", "0");
+			sql("update accounting.journal_line set deleted_at = now(), deleted_by_sub = 's', deleted_by_name = 'n' where entry_id = :id", entry);
+			return sql("update accounting.journal_entry set deleted_at = now(), deleted_by_sub = 's', deleted_by_name = 'n' where id = :id", entry);
+		});
+
+		mvc.perform(put("/api/accounting/accounts/" + cash).with(admin()).contentType(MediaType.APPLICATION_JSON)
+						.content(account("1110", "EXPENSE", accountId("1100"), true)))
+				.andExpect(status().isOk());
+		mvc.perform(delete("/api/accounting/accounts/" + cash).with(admin())).andExpect(problem(409, "account-in-use"))
+				.andExpect(jsonPath("$.detail").value("An account used by journal lines, even in deleted drafts, or with child accounts cannot be deleted"));
+	}
 }

@@ -156,4 +156,28 @@ class ReportTests extends AccountingTestSupport {
 				.andExpect(problem(404, "not-found"));
 	}
 
+	private void edit(long id, String... lines) throws Exception {
+		mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/accounting/journal-entries/" + id)
+				.with(as("editor", READ, WRITE)).contentType(MediaType.APPLICATION_JSON)
+				.content(entry(YEAR + "-01-10", lines).replaceFirst("\\{", "{\"version\": " + versionOf(id) + ", ")))
+				.andExpect(status().isOk());
+	}
+
+	@Test
+	void anEntryEditedBeforePostingCountsOnlyItsLiveLines() throws Exception {
+		long id = draft("maker", YEAR + "-01-10", line(cash, "1000.00", "0"), line(sales, "0", "1000.00"));
+		edit(id, line(cash, "30.00", "0"), line(sales, "0", "30.00"));
+		postEntry(id, "checker").andExpect(status().isOk());
+
+		trialBalance(YEAR + "-12-31")
+				.andExpect(jsonPath("$.rows[0].debit").value("30.00"))
+				.andExpect(jsonPath("$.totalDebit").value("30.00"))
+				.andExpect(jsonPath("$.totalCredit").value("30.00"));
+		ledger(cash, YEAR + "-01-01", YEAR + "-12-31")
+				.andExpect(jsonPath("$.openingBalance").value("0.00"))
+				.andExpect(jsonPath("$.lines", hasSize(1)))
+				.andExpect(jsonPath("$.lines[0].debit").value("30.00"));
+		ledger(cash, YEAR + "-02-01", YEAR + "-12-31")
+				.andExpect(jsonPath("$.openingBalance").value("30.00"));
+	}
 }

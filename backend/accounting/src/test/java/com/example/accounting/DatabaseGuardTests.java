@@ -63,7 +63,7 @@ class DatabaseGuardTests extends AccountingTestSupport {
 				.hasStackTraceContaining("cannot be changed");
 		assertThatThrownBy(() -> inTransaction(
 				() -> sql("delete from accounting.journal_line where id = :id", posted[1])))
-				.hasStackTraceContaining("cannot be changed");
+				.hasStackTraceContaining("permission denied");
 		assertThatThrownBy(() -> inTransaction(() -> {
 			insertLine(posted[0], 3, insertAccount("C", true, true), "1.00", "0");
 			return 0;
@@ -78,7 +78,7 @@ class DatabaseGuardTests extends AccountingTestSupport {
 				.hasStackTraceContaining("cannot be changed");
 		assertThatThrownBy(() -> inTransaction(
 				() -> sql("delete from accounting.journal_entry where id = :id", posted[0])))
-				.hasStackTraceContaining("cannot be changed");
+				.hasStackTraceContaining("permission denied");
 	}
 
 	@Test
@@ -104,8 +104,8 @@ class DatabaseGuardTests extends AccountingTestSupport {
 			long entry = insertEntry(insertPeriod(YEAR, 1), "DRAFT");
 			insertLine(entry, 1, insertAccount("A", true, true), "1.00", "0");
 			sql("update accounting.journal_line set memo = 'x' where entry_id = :id", entry);
-			sql("delete from accounting.journal_line where entry_id = :id", entry);
-			return sql("delete from accounting.journal_entry where id = :id", entry);
+			sql("update accounting.journal_line set deleted_at = now(), deleted_by_sub = 's', deleted_by_name = 'n' where entry_id = :id", entry);
+			return sql("update accounting.journal_entry set deleted_at = now(), deleted_by_sub = 's', deleted_by_name = 'n' where id = :id", entry);
 		})).doesNotThrowAnyException();
 	}
 
@@ -222,13 +222,13 @@ class DatabaseGuardTests extends AccountingTestSupport {
 				posted[0]));
 		assertThatThrownBy(() -> inTransaction(
 				() -> sql("delete from accounting.journal_entry where id = :id", posted[0])))
-				.hasStackTraceContaining("cannot be changed");
+				.hasStackTraceContaining("permission denied");
 		assertThatThrownBy(() -> inTransaction(
 				() -> sql("update accounting.journal_line set memo = 'x' where id = :id", posted[1])))
 				.hasStackTraceContaining("cannot be changed");
 		assertThatThrownBy(() -> inTransaction(
 				() -> sql("delete from accounting.journal_line where id = :id", posted[1])))
-				.hasStackTraceContaining("cannot be changed");
+				.hasStackTraceContaining("permission denied");
 	}
 
 	@Test
