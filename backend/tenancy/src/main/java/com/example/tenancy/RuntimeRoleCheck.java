@@ -12,7 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * Stops the app when its database role skips row-level security, which would silently turn tenant isolation off.
- * Superusers, table owners and BYPASSRLS roles all skip it. There is no off switch.
+ * Superusers, table owners (including members of an owning role) and BYPASSRLS roles all skip it. There is no off switch.
  */
 class RuntimeRoleCheck implements ApplicationRunner {
 
@@ -26,7 +26,7 @@ class RuntimeRoleCheck implements ApplicationRunner {
 	public void run(ApplicationArguments args) {
 		Map<String, Object> role = jdbc.queryForMap(
 				"select current_user::text as name, rolsuper, rolbypassrls from pg_roles where rolname = current_user");
-		long owned = jdbc.queryForObject("select count(*) from pg_tables where tableowner = current_user", Long.class);
+		long owned = jdbc.queryForObject("select count(*) from pg_tables where pg_has_role(current_user, tableowner, 'USAGE')", Long.class);
 		List<String> reasons = new ArrayList<>();
 		if (Boolean.TRUE.equals(role.get("rolsuper"))) {
 			reasons.add("is a superuser");
@@ -35,7 +35,7 @@ class RuntimeRoleCheck implements ApplicationRunner {
 			reasons.add("has BYPASSRLS");
 		}
 		if (owned > 0) {
-			reasons.add("owns " + owned + " tables");
+			reasons.add("owns " + owned + " tables, directly or through a role it belongs to");
 		}
 		if (!reasons.isEmpty()) {
 			throw new IllegalStateException("Database role " + role.get("name") + " skips row-level security: it "

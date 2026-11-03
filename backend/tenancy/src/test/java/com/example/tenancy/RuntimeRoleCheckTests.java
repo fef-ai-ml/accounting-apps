@@ -10,6 +10,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -25,6 +26,9 @@ class RuntimeRoleCheckTests {
 	@Autowired
 	DataSource applicationDataSource;
 
+	@Autowired
+	RuntimeRoleCheck registeredCheck;
+
 	private DataSource as(String user, String password) {
 		return new DriverManagerDataSource(postgres.getJdbcUrl(), user, password);
 	}
@@ -36,6 +40,30 @@ class RuntimeRoleCheckTests {
 	@Test
 	void passesForTheRuntimeRole() {
 		assertThatCode(() -> new RuntimeRoleCheck(applicationDataSource).run(null)).doesNotThrowAnyException();
+	}
+
+	@Test
+	void isRegisteredAndPassesForTheApplicationRole() {
+		assertThatCode(() -> registeredCheck.run(null)).doesNotThrowAnyException();
+	}
+
+	@Test
+	void refusesARoleThatOwnsATableThroughMembership() {
+		superuser().execute("create role owning_group nologin");
+		superuser().execute("create role owner_member login password 'x'");
+		superuser().execute("grant owning_group to owner_member");
+		superuser().execute("create table public.rls_probe (id int)");
+		superuser().execute("alter table public.rls_probe owner to owning_group");
+		superuser().execute("alter table public.rls_probe enable row level security");
+		superuser().execute("insert into public.rls_probe values (1)");
+
+		// Premise: with no policy, a role without owner rights would see 0 rows; the member sees the row.
+		assertThat(new JdbcTemplate(as("owner_member", "x")).queryForObject("select count(*) from public.rls_probe",
+				Long.class)).isEqualTo(1L);
+		assertThatThrownBy(() -> new RuntimeRoleCheck(as("owner_member", "x")).run(null))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("owner_member")
+				.hasMessageContaining("owns 1 tables, directly or through a role it belongs to");
 	}
 
 	@Test
@@ -65,7 +93,7 @@ class RuntimeRoleCheckTests {
 		assertThatThrownBy(() -> new RuntimeRoleCheck(as("table_owner", "x")).run(null))
 				.isInstanceOf(IllegalStateException.class)
 				.hasMessageContaining("table_owner")
-				.hasMessageContaining("owns 1 tables");
+				.hasMessageContaining("owns 1 tables, directly or through a role it belongs to");
 	}
 
 }
