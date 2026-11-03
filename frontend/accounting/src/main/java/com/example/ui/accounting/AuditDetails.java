@@ -14,6 +14,9 @@ final class AuditDetails {
 		if (details == null) {
 			return "";
 		}
+		if (details.get("setting") != null && details.containsKey("old") && details.containsKey("new")) {
+			return details.get("setting") + ": " + plain(details.get("old")) + " → " + plain(details.get("new"));
+		}
 		return new TreeMap<>(details).entrySet().stream()
 				.map(field -> field.getKey() + ": " + text(field.getValue()))
 				.collect(Collectors.joining(", "));

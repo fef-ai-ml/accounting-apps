@@ -123,7 +123,7 @@ public class JournalService {
 		return entries.lockForChange(id).orElseThrow(() -> new AccountingNotFoundException("Journal entry " + id));
 	}
 
-	public JournalEntry load(long id) {
+	private JournalEntry load(long id) {
 		return entries.findById(id).orElseThrow(() -> new AccountingNotFoundException("Journal entry " + id));
 	}
 

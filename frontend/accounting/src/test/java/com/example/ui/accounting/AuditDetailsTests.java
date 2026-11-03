@@ -36,4 +36,15 @@ class AuditDetailsTests {
 		assertThat(AuditDetails.format(Map.of())).isEmpty();
 	}
 
+	@Test
+	void aSettingChangeReadsAsOldToNew() {
+		assertThat(AuditDetails.format(Map.of("setting", "require_separate_poster", "old", true, "new", false)))
+				.isEqualTo("require_separate_poster: true → false");
+	}
+
+	@Test
+	void aFlatMapWithoutBothOldAndNewIsUnchanged() {
+		assertThat(AuditDetails.format(Map.of("setting", "x", "new", false))).isEqualTo("new: false, setting: x");
+	}
+
 }
