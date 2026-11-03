@@ -31,6 +31,13 @@ ALTER TABLE accounting.journal_line DROP CONSTRAINT journal_line_tenant_id_entry
 CREATE UNIQUE INDEX journal_line_live_no_idx ON accounting.journal_line (tenant_id, entry_id, line_no)
     WHERE deleted_at IS NULL;
 
+ALTER TABLE accounting.journal_entry
+    ADD CHECK ((status = 'DRAFT') = (entry_no IS NULL)),
+    -- A reversal of a reversal has a different reversal_of; NULLs do not collide.
+    ADD UNIQUE (tenant_id, reversal_of),
+    ADD FOREIGN KEY (tenant_id, reversal_of) REFERENCES accounting.journal_entry (tenant_id, id),
+    ADD FOREIGN KEY (tenant_id, reversed_by) REFERENCES accounting.journal_entry (tenant_id, id);
+
 -- Guards
 
 CREATE OR REPLACE FUNCTION accounting.guard_posted_entry_balances() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -136,6 +143,25 @@ CREATE TRIGGER entry_no_truncate BEFORE TRUNCATE ON accounting.journal_entry
 
 CREATE TRIGGER line_no_truncate BEFORE TRUNCATE ON accounting.journal_line
     FOR EACH STATEMENT EXECUTE FUNCTION accounting.guard_no_truncate();
+
+CREATE FUNCTION accounting.guard_posting_period() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    period_status VARCHAR;
+BEGIN
+    IF NEW.status = 'POSTED' AND (TG_OP = 'INSERT' OR OLD.status = 'DRAFT') THEN
+        SELECT status INTO period_status FROM accounting.fiscal_period
+        WHERE tenant_id = NEW.tenant_id AND id = NEW.period_id FOR SHARE;
+        -- No such period in this tenant: the composite foreign key rejects it.
+        IF FOUND AND period_status <> 'OPEN' THEN
+            RAISE EXCEPTION 'period % is not open, so journal entry % cannot be posted', NEW.period_id, NEW.id;
+        END IF;
+    END IF;
+    RETURN NEW;
+END $$;
+
+CREATE TRIGGER posting_period
+    BEFORE INSERT OR UPDATE ON accounting.journal_entry
+    FOR EACH ROW EXECUTE FUNCTION accounting.guard_posting_period();
 
 -- Revoke
 

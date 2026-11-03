@@ -352,4 +352,14 @@ class PostingTests extends AccountingTestSupport {
 		assertThat(subs).isEqualTo("{maker,editor}");
 	}
 
+	@Test
+	void aReversalCanItselfBeReversed() throws Exception {
+		long id = balancedDraft("maker", DATE);
+		postEntry(id, "checker").andExpect(status().isOk());
+		String reversed = reverse(id, "{\"date\": \"" + DATE + "\"}")
+				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		long reversal = ((Number) JsonPath.read(reversed, "$.reversal.id")).longValue();
+
+		reverse(reversal, "{\"date\": \"" + DATE + "\"}").andExpect(status().isOk());
+	}
 }
