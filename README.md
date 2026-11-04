@@ -200,7 +200,7 @@ until it is onboarded as a new tenant under an unused alias (onboarding step 1).
 
 #### Before upgrading a database that holds accounting data
 
-The ledger hardening migration checks existing rows, so bad data would stop the backend from starting. None is expected. To check first, run this read-only query as `app`, the owner; every count must be 0. Run as any other non-superuser role, such as `app_runtime`, row-level security hides every row, so all four counts read 0 and the database falsely looks clean:
+The ledger hardening migration checks existing rows, so bad data would stop the backend from starting. None is expected. To check first, run this read-only query as `app`, the owner; every count must be 0. Run as any other non-superuser role, such as `app_runtime`, row-level security hides every row, so all six counts read 0 and the database falsely looks clean:
 
 ```sql
 select
@@ -210,8 +210,21 @@ select
   (select count(*) from accounting.journal_entry e where e.reversal_of is not null and not exists
      (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversal_of)) as bad_reversal_of,
   (select count(*) from accounting.journal_entry e where e.reversed_by is not null and not exists
-     (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversed_by)) as bad_reversed_by;
+     (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversed_by)) as bad_reversed_by,
+  (select count(*) from accounting.journal_entry e where (e.status = 'REVERSED' or e.reversed_by is not null) and not
+     (e.status = 'REVERSED' and exists (select 1 from accounting.journal_entry r where r.tenant_id = e.tenant_id
+        and r.id = e.reversed_by and r.id <> e.id and r.reversal_of = e.id and r.status <> 'DRAFT'))) as mismatched_reversed,
+  (select count(*) from accounting.journal_entry e where e.reversal_of is not null and not exists
+     (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversal_of
+        and o.id <> e.id and o.reversed_by = e.id)) as mismatched_reversal_of;
 ```
+
+The first four counts would stop the migration. The last two would not, and the migration leaves those rows as they are, but they mean someone changed reversal links by hand, because the services cannot create them:
+
+- `mismatched_reversed`: an entry marked reversed that no posted reversal points back to, including one that names itself.
+- `mismatched_reversal_of`: a reversal that its original does not name, including one that says it reverses itself. After the migration, reversing one of these fails when the transaction commits.
+
+Repair these before upgrading. Posted rows are immutable, so decide with the accountant which link is right, then correct it by hand as the owner with the `entry_immutable` trigger disabled for that change. No script does this, because only a person can tell which link is the true one.
 
 Drafts that existed before the migration only know their creator and last editor, because earlier editors were never recorded.
 

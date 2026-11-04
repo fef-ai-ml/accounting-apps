@@ -123,7 +123,8 @@ ALTER TABLE accounting.journal_entry
   still be reversed into an open one.
 - Added after PR review, in `V20261104_1`: `reversed_by` and `reversal_of` must describe the same reversal. `POSTED →
   REVERSED` needs `reversed_by` to name a different, posted entry whose `reversal_of` points back, and a posted reversal
-  must be named by its original at commit. These guard new changes only; old rows are not checked.
+  must be named by its original at commit. These guard new changes only: the migration leaves old rows as they are, and
+  the README pre-check finds mismatched ones so they can be repaired before upgrading.
 - **Failure mode:** existing rows are checked when the migration runs, so bad data stops the backend from starting. The
   services already follow these rules, so none is expected. The README gets a read-only SQL pre-check to run first.
 
