@@ -121,6 +121,9 @@ ALTER TABLE accounting.journal_entry
 - New `BEFORE INSERT OR UPDATE` trigger on `journal_entry`: a row becoming `POSTED`, by insert or from `DRAFT`, needs its
   period `OPEN`. It reads the period `FOR SHARE`. `POSTED → REVERSED` is not affected, so an entry in a closed period can
   still be reversed into an open one.
+- Added after PR review, in `V20261104_1`: `reversed_by` and `reversal_of` must describe the same reversal. `POSTED →
+  REVERSED` needs `reversed_by` to name a different, posted entry whose `reversal_of` points back, and a posted reversal
+  must be named by its original at commit. These guard new changes only; old rows are not checked.
 - **Failure mode:** existing rows are checked when the migration runs, so bad data stops the backend from starting. The
   services already follow these rules, so none is expected. The README gets a read-only SQL pre-check to run first.
 

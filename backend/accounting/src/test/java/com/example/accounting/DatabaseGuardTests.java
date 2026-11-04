@@ -32,6 +32,26 @@ class DatabaseGuardTests extends AccountingTestSupport {
 		});
 	}
 
+	/** A balanced draft in the given month, on accounts of its own. */
+	private long balancedDraft(int month) {
+		long entry = insertEntry(insertPeriod(YEAR, month), "DRAFT");
+		insertLine(entry, 1, insertAccount("D" + month, true, true), "100.00", "0");
+		insertLine(entry, 2, insertAccount("C" + month, true, true), "0", "100.00");
+		return entry;
+	}
+
+	/** Reverses the entry in the order PostingService does: the reversal is posted, then the original is marked. */
+	private long reverse(long original) {
+		return inTransaction(() -> {
+			long reversal = balancedDraft(2);
+			sql("update accounting.journal_entry set reversal_of = " + original + " where id = :id", reversal);
+			sql("update accounting.journal_entry set status = 'POSTED', entry_no = 'JE-2' where id = :id", reversal);
+			sql("update accounting.journal_entry set status = 'REVERSED', reversed_by = " + reversal
+					+ ", version = version + 1 where id = :id", original);
+			return reversal;
+		});
+	}
+
 	@Test
 	void postedUnbalancedEntryIsRejectedAtCommit() {
 		assertThatThrownBy(() -> inTransaction(() -> {
@@ -91,12 +111,55 @@ class DatabaseGuardTests extends AccountingTestSupport {
 		assertThatThrownBy(() -> inTransaction(() -> sql(
 				"update accounting.journal_entry set status = 'REVERSED', reversed_by = id, description = 'x' where id = :id",
 				posted[0]))).hasStackTraceContaining("cannot be changed");
-		inTransaction(() -> sql(
-				"update accounting.journal_entry set status = 'REVERSED', reversed_by = id, version = version + 1 where id = :id",
-				posted[0]));
+		reverse(posted[0]);
 		assertThatThrownBy(() -> inTransaction(
 				() -> sql("update accounting.journal_entry set status = 'POSTED' where id = :id", posted[0])))
 				.hasStackTraceContaining("cannot be changed");
+	}
+
+	@Test
+	void anEntryIsOnlyMarkedReversedByThePostedEntryThatReversesIt() {
+		String refused = "the posted entry that reverses it";
+		long[] posted = postedEntry();
+		long unrelated = inTransaction(() -> {
+			long entry = balancedDraft(3);
+			sql("update accounting.journal_entry set status = 'POSTED', entry_no = 'JE-3' where id = :id", entry);
+			return entry;
+		});
+
+		assertThatThrownBy(() -> inTransaction(() -> sql(
+				"update accounting.journal_entry set status = 'REVERSED', reversed_by = id, version = version + 1 where id = :id",
+				posted[0]))).as("itself").hasStackTraceContaining(refused);
+		assertThatThrownBy(() -> inTransaction(() -> sql(
+				"update accounting.journal_entry set status = 'REVERSED', reversed_by = " + unrelated
+						+ ", version = version + 1 where id = :id", posted[0])))
+				.as("an unrelated entry").hasStackTraceContaining(refused);
+		assertThatThrownBy(() -> inTransaction(() -> {
+			long draft = balancedDraft(4);
+			sql("update accounting.journal_entry set reversal_of = " + posted[0] + " where id = :id", draft);
+			return sql("update accounting.journal_entry set status = 'REVERSED', reversed_by = " + draft
+					+ ", version = version + 1 where id = :id", posted[0]);
+		})).as("a reversal still in draft").hasStackTraceContaining(refused);
+		assertThatThrownBy(() -> inTransaction(() -> {
+			long entry = balancedDraft(4);
+			sql("update accounting.journal_entry set reversal_of = id where id = :id", entry);
+			sql("update accounting.journal_entry set status = 'POSTED', entry_no = 'JE-4' where id = :id", entry);
+			return sql("update accounting.journal_entry set status = 'REVERSED', reversed_by = id, version = version + 1 where id = :id",
+					entry);
+		})).as("an entry that says it reverses itself").hasStackTraceContaining(refused);
+	}
+
+	@Test
+	void aPostedReversalMustBeNamedByTheEntryItReverses() {
+		long[] posted = postedEntry();
+
+		assertThatThrownBy(() -> inTransaction(() -> {
+			long reversal = balancedDraft(2);
+			sql("update accounting.journal_entry set reversal_of = " + posted[0] + " where id = :id", reversal);
+			return sql("update accounting.journal_entry set status = 'POSTED', entry_no = 'JE-2' where id = :id", reversal);
+		})).hasStackTraceContaining("does not name it");
+
+		reverse(posted[0]);
 	}
 
 	@Test
@@ -218,9 +281,7 @@ class DatabaseGuardTests extends AccountingTestSupport {
 	@Test
 	void reversedEntryAndItsLinesCannotBeChangedOrDeleted() {
 		long[] posted = postedEntry();
-		inTransaction(() -> sql(
-				"update accounting.journal_entry set status = 'REVERSED', reversed_by = id, version = version + 1 where id = :id",
-				posted[0]));
+		reverse(posted[0]);
 		assertThatThrownBy(() -> inTransaction(
 				() -> sql("delete from accounting.journal_entry where id = :id", posted[0])))
 				.hasStackTraceContaining("permission denied");
@@ -318,7 +379,7 @@ class DatabaseGuardTests extends AccountingTestSupport {
 				.hasStackTraceContaining("foreign key");
 		assertThatThrownBy(() -> inTransaction(() -> sql(
 				"update accounting.journal_entry set status = 'REVERSED', reversed_by = " + foreign[0] + ", version = version + 1 where id = :id", posted[0])))
-				.hasStackTraceContaining("foreign key");
+				.hasStackTraceContaining("the posted entry that reverses it");
 	}
 
 	@Test
@@ -345,8 +406,6 @@ class DatabaseGuardTests extends AccountingTestSupport {
 		inTransaction(() -> sql(
 				"update accounting.fiscal_period set status = 'CLOSED' where id = (select period_id from accounting.journal_entry where id = :id)", posted[0]));
 
-		assertThatCode(() -> inTransaction(() -> sql(
-				"update accounting.journal_entry set status = 'REVERSED', reversed_by = id, version = version + 1 where id = :id", posted[0])))
-				.doesNotThrowAnyException();
+		assertThatCode(() -> reverse(posted[0])).doesNotThrowAnyException();
 	}
 }
