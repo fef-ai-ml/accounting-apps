@@ -116,7 +116,7 @@ Use a private browser window per user, at `http://localhost:8081`:
 | 18 | Add a second line, click **Balance** on it, then **Save draft** | Banner shows "Balanced"; no number yet; no Post button (no permission) |
 | 19 | Log in as `accountant`, open the draft, change nothing, click **Post** | Number `JE-<year>-000001`; form is read-only with Reverse buttons |
 | 20 | Click **Reverse** on the posted entry | Asks for confirmation before posting the reversal |
-| 21 | As `accountant`, create and save your own balanced draft | Post is disabled with "You prepared this entry; another user must post it" |
+| 21 | As `accountant`, create and save your own balanced draft | Post is disabled with "You prepared or edited this entry; another user must post it" |
 | 22 | As `admin`, switch the setting off in **Accounts**; as `accountant`, reopen that draft | Post is enabled and works; switch the setting back on afterwards |
 | 23 | Open a draft in two browser windows as `accountant`; save a change in one, click **Save draft** in the other | "Someone else changed this entry. Reload?"; Yes shows the other window's change |
 | 24 | In one window delete a draft; in the other, open its row from the list | An error message and no blank form |
@@ -132,6 +132,10 @@ Use a private browser window per user, at `http://localhost:8081`:
 | 34 | In a saved draft change a debit to `-5`, leave the field, then click **Save draft** | The error bubble stays and nothing is saved; **Save draft** comes back once the amount is corrected |
 | 35 | Open **New entry**, type something, and leave it idle past the session timeout; then try to leave the page, and separately to save | The work is lost, by decision (no keep-alive: an idle session must still expire). The browser warns before leaving; Save says "Your login has expired. This entry was not saved." where the login, not only the ZK session, is what failed |
 | 36 | Open a report's CSV in Excel with Indonesian regional settings | Seen 2026-11-03 in Excel for Mac (English language, region Indonesia): columns split and amounts are numbers. Not run on Windows Excel with Indonesian settings; reasoned only: a comma-separated file with dot decimals may open in one column there; check whether Data > From Text is needed |
+| 37 | Log in as an accountant and an admin: open **Audit**. Log in as a bookkeeper and a viewer | Accountant and admin see the menu item and the log. Bookkeeper and viewer do not see it |
+| 38 | As an admin, rename an account, then open **Audit** and filter by `ACCOUNT_CHANGE`. Also change the type and the postable flag of a fresh account with no journal lines (on an account with lines these two fail with 409 `account-in-use`) | One row per change, with your name, Jakarta time and `name: old → new` (likewise for type and postable) |
+| 39 | As `bookkeeper`, create a balanced draft. Save it as `accountant`, then save it again as `bookkeeper`. Open it as `accountant`, then as `admin` | `accountant`, who is neither its creator nor its last editor, sees "You prepared or edited this entry; another user must post it" and cannot post; `admin` can post |
+| 40 | Save a draft with changed lines, delete another draft, then query `select count(*) from accounting.journal_line where deleted_at is not null` as `app` | The count grew; neither draft's old lines show on any screen |
 
 If you are sent back to the login page after every login, the shell log shows `API call unauthorized` with the
 backend's `WWW-Authenticate` reason (usually an issuer mismatch, see above).
@@ -194,6 +198,36 @@ until it is onboarded as a new tenant under an unused alias (onboarding step 1).
 4. The `BOOKKEEPER` and `ACCOUNTANT` roles and users come with the realm file, so re-import the realm as in step 2 (or
    add them in the admin console), and log in again.
 
+#### Before upgrading a database that holds accounting data
+
+The ledger hardening migration checks existing rows, so bad data would stop the backend from starting. None is expected. To check first, run this read-only query as `app`, the owner; every count must be 0. Run as any other non-superuser role, such as `app_runtime`, row-level security hides every row, so all six counts read 0 and the database falsely looks clean:
+
+```sql
+select
+  (select count(*) from accounting.journal_entry where (status = 'DRAFT') <> (entry_no is null)) as number_mismatch,
+  (select count(*) from (select 1 from accounting.journal_entry where reversal_of is not null
+                         group by tenant_id, reversal_of having count(*) > 1) d) as double_reversals,
+  (select count(*) from accounting.journal_entry e where e.reversal_of is not null and not exists
+     (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversal_of)) as bad_reversal_of,
+  (select count(*) from accounting.journal_entry e where e.reversed_by is not null and not exists
+     (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversed_by)) as bad_reversed_by,
+  (select count(*) from accounting.journal_entry e where (e.status = 'REVERSED' or e.reversed_by is not null) and not
+     (e.status = 'REVERSED' and exists (select 1 from accounting.journal_entry r where r.tenant_id = e.tenant_id
+        and r.id = e.reversed_by and r.id <> e.id and r.reversal_of = e.id and r.status <> 'DRAFT'))) as mismatched_reversed,
+  (select count(*) from accounting.journal_entry e where e.reversal_of is not null and not exists
+     (select 1 from accounting.journal_entry o where o.tenant_id = e.tenant_id and o.id = e.reversal_of
+        and o.id <> e.id and o.reversed_by = e.id)) as mismatched_reversal_of;
+```
+
+The first four counts would stop the migration. The last two would not, and the migration leaves those rows as they are, but they mean someone changed reversal links by hand, because the services cannot create them:
+
+- `mismatched_reversed`: an entry marked reversed that no posted reversal points back to, including one that names itself.
+- `mismatched_reversal_of`: a reversal that its original does not name, including one that says it reverses itself. After the migration, reversing one of these fails when the transaction commits.
+
+Repair these before upgrading. Posted rows are immutable, so decide with the accountant which link is right, then correct it by hand as the owner with the `entry_immutable` trigger disabled for that change. No script does this, because only a person can tell which link is the true one.
+
+Drafts that existed before the migration only know their creator and last editor, because earlier editors were never recorded.
+
 ## Accounting
 
 Phase 1 of the accounting module (`backend/accounting`, schema `accounting`): a chart of accounts copied from a
@@ -221,6 +255,7 @@ or a row, and from Periods when closing a month is blocked by a draft; the shell
 | `POST /api/accounting/journal-entries/{id}/post`, `/reverse` | `post` | `post` takes the required `?version=` the checker reviewed (409 `version-conflict` if the draft changed); reverse body `{date, copyToDraft}`, and the date cannot precede the original entry |
 | `GET /api/accounting/reports/trial-balance?asOf=` | `read` | Totals and difference |
 | `GET /api/accounting/reports/general-ledger?accountId&from&to` | `read` | Opening, running and closing balance |
+| `GET /api/accounting/audit?from&to&action&page&size` | `audit-read` | Paged, `size` default 50 |
 
 Amounts are JSON strings with two decimals (`"1665000.00"`). Every error carries a stable `code`.
 

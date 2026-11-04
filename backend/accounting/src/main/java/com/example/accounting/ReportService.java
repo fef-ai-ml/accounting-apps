@@ -43,7 +43,7 @@ public class ReportService {
 				from accounting.account a
 				join accounting.journal_line l on l.tenant_id = a.tenant_id and l.account_id = a.id
 				join accounting.journal_entry e on e.tenant_id = l.tenant_id and e.id = l.entry_id
-				where e.status in ('POSTED', 'REVERSED') and e.entry_date <= :asOf
+				where e.status in ('POSTED', 'REVERSED') and e.entry_date <= :asOf and l.deleted_at is null
 				  and a.tenant_id = cast(nullif(current_setting('app.tenant_id', true), '') as uuid)
 				group by a.id, a.code, a.name, a.type
 				order by a.code
@@ -73,7 +73,7 @@ public class ReportService {
 				select coalesce(sum(l.debit), 0), coalesce(sum(l.credit), 0)
 				from accounting.journal_line l
 				join accounting.journal_entry e on e.tenant_id = l.tenant_id and e.id = l.entry_id
-				where l.account_id = :account and e.status in ('POSTED', 'REVERSED') and e.entry_date < :from
+				where l.account_id = :account and e.status in ('POSTED', 'REVERSED') and e.entry_date < :from and l.deleted_at is null
 				""").setParameter("account", accountId).setParameter("from", from).getSingleResult();
 		BigDecimal opening = balance(account.getType(), money(before[0]), money(before[1]));
 		@SuppressWarnings("unchecked")
@@ -81,7 +81,7 @@ public class ReportService {
 				select cast(e.entry_date as text), e.id, e.entry_no, e.description, l.memo, l.debit, l.credit
 				from accounting.journal_line l
 				join accounting.journal_entry e on e.tenant_id = l.tenant_id and e.id = l.entry_id
-				where l.account_id = :account and e.status in ('POSTED', 'REVERSED')
+				where l.account_id = :account and e.status in ('POSTED', 'REVERSED') and l.deleted_at is null
 				  and e.entry_date >= :from and e.entry_date <= :to
 				order by e.entry_date, e.entry_no, l.line_no
 				""").setParameter("account", accountId).setParameter("from", from).setParameter("to", to).getResultList();

@@ -5,6 +5,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Instant;
+import java.util.Map;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -22,6 +24,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.example.ui.accounting.AccountDto;
 import com.example.ui.accounting.AccountingApiClient;
+import com.example.ui.accounting.AuditPageDto;
+import com.example.ui.accounting.AuditRowDto;
 import com.example.ui.accounting.EntryPageDto;
 import com.example.ui.accounting.EntrySummaryDto;
 import com.example.ui.accounting.PeriodDto;
@@ -128,6 +132,15 @@ class AccountingScreensRenderTests {
 				new BigDecimal("1000.00"), new BigDecimal("300.00"), new BigDecimal("700.00")));
 
 		assertThat(render("reports.zul")).contains("Kas Kecil", "1.000,00", "700,00", "Export CSV", "General ledger");
+	}
+
+	@Test
+	void auditRendersRowsInJakartaTime() throws Exception {
+		when(accountingApiClient.audit(any(), any(), any(), anyInt(), anyInt())).thenReturn(new AuditPageDto(List.of(new AuditRowDto(
+				Instant.parse("2026-03-14T17:30:00Z"), "Akuntan", "ACCOUNT_CHANGE", "account", 5L,
+				Map.of("name", Map.of("from", "Kas", "to", "Kas Kecil")))), 1, 0, 50));
+
+		assertThat(render("audit.zul")).contains("Akuntan", "2026\\-03\\-15 00:30:00", "ACCOUNT_CHANGE", "account 5", "Kas Kecil");
 	}
 
 }

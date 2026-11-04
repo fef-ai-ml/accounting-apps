@@ -72,10 +72,10 @@ class JournalRulesTests {
 
 	@Test
 	void makerCheckerMatrix() {
-		assertThat(JournalRules.mayPost("poster", "maker", "editor", true)).isTrue();
-		assertThat(JournalRules.mayPost("maker", "maker", "editor", true)).isFalse();
-		assertThat(JournalRules.mayPost("editor", "maker", "editor", true)).isFalse();
-		assertThat(JournalRules.mayPost("maker", "maker", "maker", false)).isTrue();
+		assertThat(JournalRules.mayPost("poster", List.of("maker", "editor"), true)).isTrue();
+		assertThat(JournalRules.mayPost("maker", List.of("maker", "editor"), true)).isFalse();
+		assertThat(JournalRules.mayPost("editor", List.of("maker", "editor"), true)).isFalse();
+		assertThat(JournalRules.mayPost("maker", List.of("maker"), false)).isTrue();
 	}
 
 }

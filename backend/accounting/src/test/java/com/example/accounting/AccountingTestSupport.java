@@ -67,7 +67,9 @@ abstract class AccountingTestSupport {
 
 	static final String ACCOUNT_MANAGE = "accounting:account-manage";
 
-	static final String[] ALL = { READ, WRITE, POST, PERIOD_MANAGE, ACCOUNT_MANAGE };
+	static final String AUDIT_READ = "accounting:audit-read";
+
+	static final String[] ALL = { READ, WRITE, POST, PERIOD_MANAGE, ACCOUNT_MANAGE, AUDIT_READ };
 
 	@Autowired
 	MockMvc mvc;

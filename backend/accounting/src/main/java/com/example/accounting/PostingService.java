@@ -42,16 +42,16 @@ public class PostingService {
 	public EntryResponse post(long id, long version) {
 		Actor actor = Actor.current();
 		Settings current = settings.require();
-		JournalEntry entry = journal.load(id);
+		JournalEntry entry = journal.loadForChange(id);
 		JournalService.requireDraft(entry);
 		JournalService.requireVersion(entry, version);
 		JournalRules.checkBalanced(entry.sides());
 		journal.checkAccountsUsable(entry.getLines().stream().map(JournalLine::getAccountId).toList());
 		lockOpenPeriod(entry.getEntryDate());
-		if (!JournalRules.mayPost(actor.sub(), entry.getCreatedBySub(), entry.getLastModifiedBySub(),
+		if (!JournalRules.mayPost(actor.sub(), entry.preparers(),
 				current.isRequireSeparatePoster())) {
 			throw AccountingException.forbidden("separate-poster-required",
-					"You prepared this entry; another user must post it");
+					"You prepared or edited this entry; another user must post it");
 		}
 		assignNumberAndPost(entry, actor);
 		audit.record(AuditAction.POST, "journal_entry", entry.getId(), Map.of("entryNo", entry.getEntryNo(),
@@ -63,7 +63,7 @@ public class PostingService {
 	public ReverseResponse reverse(long id, ReverseRequest request) {
 		Actor actor = Actor.current();
 		settings.require();
-		JournalEntry original = journal.load(id);
+		JournalEntry original = journal.loadForChange(id);
 		if (original.getStatus() == EntryStatus.DRAFT) {
 			throw AccountingException.conflict("not-draft", "Only a posted entry can be reversed");
 		}

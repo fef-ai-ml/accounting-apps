@@ -28,8 +28,10 @@ interface FiscalPeriodRepository extends JpaRepository<FiscalPeriod, Long> {
 	@Query("select p from FiscalPeriod p where p.id = :id")
 	Optional<FiscalPeriod> lockForClosing(@Param("id") long id);
 
-	@Query(nativeQuery = true,
-			value = "select count(*) from accounting.journal_entry where period_id = :id and status = 'DRAFT'")
+	@Query(nativeQuery = true, value = """
+			select count(*) from accounting.journal_entry
+			where period_id = :id and status = 'DRAFT' and deleted_at is null
+			""")
 	long countDrafts(@Param("id") long id);
 
 }

@@ -2,6 +2,8 @@ package com.example.shell;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Map;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
@@ -41,6 +43,8 @@ import org.zkoss.zul.Window;
 import com.example.ui.accounting.AccountDto;
 import com.example.ui.accounting.AccountRequest;
 import com.example.ui.accounting.AccountingApiClient;
+import com.example.ui.accounting.AuditPageDto;
+import com.example.ui.accounting.AuditRowDto;
 import com.example.ui.accounting.EntryDto;
 import com.example.ui.accounting.EntryFilter;
 import com.example.ui.accounting.EntryPageDto;
@@ -61,6 +65,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -661,6 +666,46 @@ class AccountingClickPathTests {
 		zk.click(zk.button("Post"));
 
 		assertThat(zk.response).contains("You prepared &lt;img src=x&gt;").doesNotContain("<img src=x>");
+	}
+
+	private static AuditPageDto auditPage(long total) {
+		return new AuditPageDto(List.of(new AuditRowDto(Instant.parse("2026-03-14T17:30:00Z"), "Akuntan", "ACCOUNT_CHANGE",
+				"account", 5L, Map.of())), total, 0, 50);
+	}
+
+	private void stubAudit(long total) {
+		when(api.audit(any(), any(), any(), anyInt(), anyInt())).thenAnswer(call -> {
+			zk.captureDesktop();
+			return auditPage(total);
+		});
+	}
+
+	@Test
+	void auditFiltersAndKeepsTheFilterWhilePaging() throws Exception {
+		stubAudit(120);
+		page("audit.zul");
+		verify(api).audit(isNull(), isNull(), eq(""), eq(0), eq(50));
+
+		zk.change(zk.all(Combobox.class).get(0), "POST");
+		zk.click(zk.button("Search"));
+		verify(api).audit(isNull(), isNull(), eq("POST"), eq(0), eq(50));
+
+		zk.au("onPaging", zk.all(Paging.class).get(0).getUuid(), "{\"\":1}");
+		verify(api).audit(isNull(), isNull(), eq("POST"), eq(1), eq(50));
+	}
+
+	@Test
+	void aRefusedAuditSearchEmptiesTheListAndSaysWhy() throws Exception {
+		stubAudit(1);
+		page("audit.zul");
+		assertThat(zk.all(Listitem.class)).hasSize(1);
+
+		when(api.audit(any(), any(), any(), anyInt(), anyInt())).thenThrow(HttpClientErrorException.create(HttpStatus.FORBIDDEN,
+				"Forbidden", HttpHeaders.EMPTY, new byte[0], StandardCharsets.UTF_8));
+		zk.click(zk.button("Search"));
+
+		assertThat(zk.all(Listitem.class)).isEmpty();
+		assertThat(zk.response).contains("have permission to do that");
 	}
 
 }

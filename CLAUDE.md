@@ -44,7 +44,8 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   on `KeycloakAuthentication`. `backend/tenancy` sets it on Hibernate and on each pooled connection
   (`app.tenant_id`). One user = one tenant.
 - **The API connects as `app_runtime`** (no superuser, owns nothing), Flyway as `app`; RLS does not apply to owners
-  and superusers.
+  and superusers. `RuntimeRoleCheck` in `backend/tenancy` stops the app at startup when the connected role is a
+  superuser, has BYPASSRLS, or owns a table directly or through a role it belongs to.
 
 ## Gotchas
 
@@ -96,8 +97,11 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
 - Dev-only data lives in `db/demo/<module>` as repeatable migrations behind a property (`iam.demo-tenants`, set by the
   backend's `dev` profile); test-only migrations live in `db/test/<module>`, added with `spring.flyway.locations` in
   the test (a module without a customizer, like `tenancy`, keeps Boot's default for its test migration).
-- To replace an entry's lines, clear the collection and flush before adding the new ones: Hibernate inserts before it
-  deletes, which would trip `UNIQUE (tenant_id, entry_id, line_no)`.
+- Journal lines and entries are never hard deleted: `app_runtime` has no `DELETE` on them and triggers refuse it even
+  for the owner. Saving a draft marks its old lines `deleted_at`, then flushes, then adds new ones (Hibernate inserts
+  before it updates, which would trip the unique index on live line numbers). `@SQLRestriction` hides removed rows
+  from JPA, but every native query on `journal_line` or `journal_entry` must filter `deleted_at is null` by hand: a
+  posted entry keeps the lines removed while it was a draft, so a missed filter makes a report wrong.
 - `accounting` grants `app_runtime` per table, never with `ALTER DEFAULT PRIVILEGES`. Database triggers guard posted
   entries (`V20261102_4__accounting_guards.sql`): a service that breaks a rule gets a 500 logged as an invariant bug,
   so check every rule in the service first.
@@ -141,6 +145,9 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
   parallel posts with gapless numbers, and the bookkeeper/accountant path with real signed tokens.
 - Verified 2026-11-03 (`./mvnw verify`): the accounting screens render, their logic is unit-tested, and their click
   paths run through real ZK over AU.
+- Verified 2026-11-03 (`./mvnw verify`): ledger hardening, including no hard deletes as `app_runtime` and as the
+  owner, a migration over existing Phase 1 data, and the delete-versus-post race. README rows 37-40 are still to be
+  done by hand.
 - Verified 2026-10-28 by hand against Keycloak 26.8.1 on the home-lab (README "Manual end-to-end check" rows 1–6):
   login redirect, viewer/editor/admin permissions in the UI, logout back to the Keycloak login page, 401 + Bearer from
   the API.

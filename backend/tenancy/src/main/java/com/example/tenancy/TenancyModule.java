@@ -22,6 +22,11 @@ import com.example.security.SecurityModule;
 public class TenancyModule {
 
 	@Bean
+	RuntimeRoleCheck runtimeRoleCheck(DataSource dataSource) {
+		return new RuntimeRoleCheck(dataSource);
+	}
+
+	@Bean
 	HibernatePropertiesCustomizer tenancyHibernateProperties(DataSource dataSource) {
 		return properties -> {
 			properties.put(AvailableSettings.MULTI_TENANT_CONNECTION_PROVIDER, new RlsConnectionProvider(dataSource));

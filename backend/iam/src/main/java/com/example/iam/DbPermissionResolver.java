@@ -9,12 +9,10 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
 import com.example.security.KeycloakRoles;
-import com.example.security.KeycloakTenant;
 import com.example.security.PermissionResolver;
-import com.example.security.TenantDirectory;
 
 /**
- * Resolves permissions from the {@code iam} tables for users of an active tenant. Results are cached per role set
+ * Resolves permissions from the {@code iam} tables for the roles in a token; the converter gates on the active tenant. Results are cached per role set
  * for 60 seconds, so a changed mapping reaches running instances within a minute without a restart.
  */
 @Component
@@ -22,23 +20,18 @@ public class DbPermissionResolver implements PermissionResolver {
 
 	private final RolePermissionRepository repository;
 
-	private final TenantDirectory tenants;
-
 	private final Cache<Set<String>, Set<String>> cache = Caffeine.newBuilder()
 			.expireAfterWrite(Duration.ofSeconds(60))
 			.maximumSize(1_000)
 			.build();
 
-	DbPermissionResolver(RolePermissionRepository repository, TenantDirectory tenants) {
+	DbPermissionResolver(RolePermissionRepository repository) {
 		this.repository = repository;
-		this.tenants = tenants;
 	}
 
 	@Override
 	public Set<String> permissionsFor(Jwt jwt) {
-		// Roles act inside the user's tenant only; without an active tenant they grant nothing.
-		boolean activeTenant = KeycloakTenant.activeTenant(jwt, tenants).isPresent();
-		return activeTenant ? permissionsForRoles(KeycloakRoles.of(jwt)) : Set.of();
+		return permissionsForRoles(KeycloakRoles.of(jwt));
 	}
 
 	Set<String> permissionsForRoles(Set<String> roles) {

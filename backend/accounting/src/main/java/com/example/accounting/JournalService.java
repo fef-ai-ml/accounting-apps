@@ -1,6 +1,7 @@
 package com.example.accounting;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -48,6 +49,14 @@ public class JournalService {
 
 	@Transactional(readOnly = true)
 	public EntryPage list(LocalDate from, LocalDate to, EntryStatus status, Long accountId, String q, int page, int size) {
+		checkPaging(page, size);
+		checkDates(from, to);
+		Page<JournalEntry> result = entries.findAll(filter(from, to, status, accountId, q),
+				PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "entryDate", "id")));
+		return new EntryPage(result.stream().map(EntrySummary::from).toList(), result.getTotalElements(), page, size);
+	}
+
+	static void checkPaging(int page, int size) {
 		if (size < 1 || size > MAX_PAGE_SIZE || page < 0) {
 			throw AccountingException.badRequest("validation",
 					"page must not be negative and size must be between 1 and " + MAX_PAGE_SIZE);
@@ -55,12 +64,12 @@ public class JournalService {
 		if ((long) page * size > Integer.MAX_VALUE) {
 			throw AccountingException.badRequest("validation", "page is too large");
 		}
+	}
+
+	static void checkDates(LocalDate from, LocalDate to) {
 		if (from != null && to != null && from.isAfter(to)) {
 			throw AccountingException.badRequest("validation", "from must not be after to");
 		}
-		Page<JournalEntry> result = entries.findAll(filter(from, to, status, accountId, q),
-				PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "entryDate", "id")));
-		return new EntryPage(result.stream().map(EntrySummary::from).toList(), result.getTotalElements(), page, size);
 	}
 
 	@Transactional(readOnly = true)
@@ -78,17 +87,18 @@ public class JournalService {
 	}
 
 	public EntryResponse update(long id, EntryRequest request) {
-		JournalEntry entry = load(id);
+		JournalEntry entry = loadForChange(id);
 		requireDraft(entry);
 		if (request.version() == null) {
 			throw AccountingException.badRequest("validation", "version is required when updating an entry");
 		}
 		requireVersion(entry, request.version());
 		List<ValidLine> lines = validated(request.lines());
-		entry.edit(request.date(), periodOf(request.date()), request.reference(), request.description(),
-				Actor.current(), clock.instant());
-		// Hibernate inserts before it deletes, which would trip UNIQUE (tenant_id, entry_id, line_no).
-		entry.getLines().clear();
+		Actor actor = Actor.current();
+		Instant now = clock.instant();
+		entry.edit(request.date(), periodOf(request.date()), request.reference(), request.description(), actor, now);
+		entry.removeLines(actor, now);
+		// Hibernate inserts before it updates, which would trip the unique index on live line numbers.
 		entries.flush();
 		lines.forEach(line -> entry.addLine(line.accountId(), line.side(), line.memo()));
 		return response(entries.saveAndFlush(entry));
@@ -97,18 +107,23 @@ public class JournalService {
 	private EntryResponse response(JournalEntry entry) {
 		boolean separate = settings.current().map(Settings::isRequireSeparatePoster).orElse(true);
 		boolean blocked = entry.getStatus() == EntryStatus.DRAFT && !JournalRules.mayPost(Actor.current().sub(),
-				entry.getCreatedBySub(), entry.getLastModifiedBySub(), separate);
+				entry.preparers(), separate);
 		return EntryResponse.from(entry, blocked);
 	}
 
 	public void delete(long id, long version) {
-		JournalEntry entry = load(id);
+		JournalEntry entry = loadForChange(id);
 		requireDraft(entry);
 		requireVersion(entry, version);
-		entries.delete(entry);
+		entry.markDeleted(Actor.current(), clock.instant());
 	}
 
-	public JournalEntry load(long id) {
+	/** Lock order everywhere is entry, then period, then sequence; closing a period takes no entry locks, so no cycle. */
+	public JournalEntry loadForChange(long id) {
+		return entries.lockForChange(id).orElseThrow(() -> new AccountingNotFoundException("Journal entry " + id));
+	}
+
+	private JournalEntry load(long id) {
 		return entries.findById(id).orElseThrow(() -> new AccountingNotFoundException("Journal entry " + id));
 	}
 

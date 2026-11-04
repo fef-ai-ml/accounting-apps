@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import jakarta.persistence.CascadeType;
@@ -21,10 +23,14 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
 import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.annotations.TenantId;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "journal_entry", schema = "accounting")
+@SQLRestriction("deleted_at is null")
 public class JournalEntry {
 
 	@Id
@@ -87,15 +93,43 @@ public class JournalEntry {
 	@Column(name = "posted_at")
 	private Instant postedAt;
 
+	@Column(name = "deleted_at")
+	private Instant deletedAt;
+
+	@Column(name = "deleted_by_sub", length = 100)
+	private String deletedBySub;
+
+	@Column(name = "deleted_by_name", length = 200)
+	private String deletedByName;
+
+	@JdbcTypeCode(SqlTypes.ARRAY)
+	@Column(name = "prepared_by_subs", nullable = false)
+	private List<String> preparedBySubs = new ArrayList<>();
+
 	@Version
 	private Long version;
 
-	@OneToMany(mappedBy = "entry", cascade = CascadeType.ALL, orphanRemoval = true)
+	// No REMOVE and no orphanRemoval: Hibernate must have no path to deleting a line.
+	@OneToMany(mappedBy = "entry", cascade = { CascadeType.PERSIST, CascadeType.MERGE })
 	@OrderBy("lineNo")
 	@BatchSize(size = 200)
+	@SQLRestriction("deleted_at is null")
 	private List<JournalLine> lines = new ArrayList<>();
 
 	protected JournalEntry() {
+	}
+
+	/** Marks every live line removed and empties the list; flush before adding lines, Hibernate inserts before it updates. */
+	void removeLines(Actor actor, Instant at) {
+		lines.forEach(line -> line.markDeleted(actor, at));
+		lines.clear();
+	}
+
+	void markDeleted(Actor actor, Instant at) {
+		this.deletedAt = at;
+		this.deletedBySub = actor.sub();
+		this.deletedByName = actor.name();
+		removeLines(actor, at);
 	}
 
 	JournalEntry(LocalDate entryDate, Long periodId, String reference, String description, Actor actor, Instant at) {
@@ -113,6 +147,17 @@ public class JournalEntry {
 		this.lastModifiedBySub = actor.sub();
 		this.lastModifiedByName = actor.name();
 		this.lastModifiedAt = at;
+		if (!preparedBySubs.contains(actor.sub())) {
+			preparedBySubs.add(actor.sub());
+		}
+	}
+
+	/** Never empty: a draft written without the list (old instance, raw SQL) must still block its own maker. */
+	Set<String> preparers() {
+		Set<String> all = new HashSet<>(preparedBySubs);
+		all.add(createdBySub);
+		all.add(lastModifiedBySub);
+		return all;
 	}
 
 	void addLine(Long accountId, Side side, String memo) {

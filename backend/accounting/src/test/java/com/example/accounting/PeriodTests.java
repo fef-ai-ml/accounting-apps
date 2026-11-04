@@ -115,4 +115,13 @@ class PeriodTests extends AccountingTestSupport {
 				.andExpect(problem(404, "not-found"));
 	}
 
+	@Test
+	void aDeletedDraftDoesNotBlockClosing() throws Exception {
+		long id = periodId(2);
+		long entry = inTransaction(() -> insertEntry(id, "DRAFT"));
+		inTransaction(() -> sql(
+				"update accounting.journal_entry set deleted_at = now(), deleted_by_sub = 's', deleted_by_name = 'n' where id = :id", entry));
+
+		mvc.perform(post("/api/accounting/periods/" + id + "/close").with(as("u", PERIOD_MANAGE))).andExpect(status().isOk());
+	}
 }

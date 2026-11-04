@@ -1,6 +1,7 @@
 package com.example.accounting;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 
 /** The bookkeeping rules that need no database, so they can be tested alone. */
@@ -48,9 +49,8 @@ final class JournalRules {
 		}
 	}
 
-	static boolean mayPost(String posterSub, String createdBySub, String lastModifiedBySub,
-			boolean requireSeparatePoster) {
-		return !requireSeparatePoster || (!posterSub.equals(createdBySub) && !posterSub.equals(lastModifiedBySub));
+	static boolean mayPost(String posterSub, Collection<String> preparedBySubs, boolean requireSeparatePoster) {
+		return !requireSeparatePoster || !preparedBySubs.contains(posterSub);
 	}
 
 }

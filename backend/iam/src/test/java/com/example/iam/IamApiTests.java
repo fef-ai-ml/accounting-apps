@@ -1,5 +1,6 @@
 package com.example.iam;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -12,9 +13,12 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.web.servlet.MockMvc;
+
+import com.example.security.KeycloakJwtAuthenticationConverter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
@@ -69,7 +73,7 @@ class IamApiTests {
 		assertThat(resolver.permissionsForRoles(Set.of("EDITOR"))).containsExactlyInAnyOrder("task:read", "task:write");
 		assertThat(resolver.permissionsForRoles(Set.of("ADMIN"))).containsExactlyInAnyOrder("task:read", "task:write",
 				"task:delete", "iam:read", "accounting:read", "accounting:write", "accounting:post",
-				"accounting:period-manage", "accounting:account-manage");
+				"accounting:period-manage", "accounting:account-manage", "accounting:audit-read");
 	}
 
 	@Test
@@ -83,7 +87,7 @@ class IamApiTests {
 		assertThat(resolver.permissionsForRoles(Set.of("BOOKKEEPER")))
 				.containsExactlyInAnyOrder("accounting:read", "accounting:write");
 		assertThat(resolver.permissionsForRoles(Set.of("ACCOUNTANT"))).containsExactlyInAnyOrder("accounting:read",
-				"accounting:write", "accounting:post", "accounting:period-manage");
+				"accounting:write", "accounting:post", "accounting:period-manage", "accounting:audit-read");
 	}
 
 	@Test
@@ -108,6 +112,10 @@ class IamApiTests {
 		assertThat(resolver.permissionsFor(editor)).containsExactlyInAnyOrder("task:read", "task:write");
 	}
 
+	private Collection<? extends GrantedAuthority> authorities(Jwt jwt) {
+		return new KeycloakJwtAuthenticationConverter(resolver, tenants).convert(jwt).getAuthorities();
+	}
+
 	@Test
 	void directoryConfirmsOnlyActiveTenants() {
 		assertThat(tenants.isActive(DEMO)).isTrue();
@@ -120,17 +128,17 @@ class IamApiTests {
 	void tokenWithoutActiveTenantHasNoPermissions() {
 		Map<String, Object> editorRoles = Map.of("roles", List.of("EDITOR"));
 
-		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles)))).isEmpty();
-		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles,
+		assertThat(authorities(token(Map.of("realm_access", editorRoles)))).isEmpty();
+		assertThat(authorities(token(Map.of("realm_access", editorRoles,
 				"tenant", tenant("closed", CLOSED))))).isEmpty();
-		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles,
+		assertThat(authorities(token(Map.of("realm_access", editorRoles,
 				"tenant", tenant("nobody", UUID.randomUUID()))))).isEmpty();
 		Map<String, Object> twoOrganizations =
 				Map.of("demo", Map.of("id", DEMO.toString()), "acme", Map.of("id", ACME.toString()));
-		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles,
+		assertThat(authorities(token(Map.of("realm_access", editorRoles,
 				"tenant", twoOrganizations)))).isEmpty();
 		// The alias alone, as the built-in organization scope writes it, is no tenant.
-		assertThat(resolver.permissionsFor(token(Map.of("realm_access", editorRoles,
+		assertThat(authorities(token(Map.of("realm_access", editorRoles,
 				"organization", List.of("demo"))))).isEmpty();
 	}
 
@@ -139,7 +147,7 @@ class IamApiTests {
 		// Organization "demo" deleted in Keycloak and created again: same alias, new id.
 		Map<String, Object> reCreated = tenant("demo", UUID.randomUUID());
 
-		assertThat(resolver.permissionsFor(token(Map.of("realm_access", Map.of("roles", List.of("ADMIN")),
+		assertThat(authorities(token(Map.of("realm_access", Map.of("roles", List.of("ADMIN")),
 				"tenant", reCreated)))).isEmpty();
 		mvc.perform(get("/api/iam/me").with(jwt().jwt(j -> j.claim("tenant", reCreated))))
 				.andExpect(status().isOk())
@@ -206,8 +214,8 @@ class IamApiTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[0].role").value("ACCOUNTANT"))
 				.andExpect(jsonPath("$[1].role").value("ADMIN"))
-				.andExpect(jsonPath("$[1].permissions", contains("accounting:account-manage", "accounting:period-manage",
-						"accounting:post", "accounting:read", "accounting:write", "iam:read", "task:delete", "task:read",
+				.andExpect(jsonPath("$[1].permissions", contains("accounting:account-manage", "accounting:audit-read",
+						"accounting:period-manage", "accounting:post", "accounting:read", "accounting:write", "iam:read", "task:delete", "task:read",
 						"task:write")))
 				.andExpect(jsonPath("$[2].role").value("BOOKKEEPER"))
 				.andExpect(jsonPath("$[3].role").value("EDITOR"))

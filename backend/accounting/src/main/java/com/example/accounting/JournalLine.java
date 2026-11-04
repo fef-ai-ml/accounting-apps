@@ -1,6 +1,7 @@
 package com.example.accounting;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -13,10 +14,12 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.SQLRestriction;
 import org.hibernate.annotations.TenantId;
 
 @Entity
 @Table(name = "journal_line", schema = "accounting")
+@SQLRestriction("deleted_at is null")
 class JournalLine {
 
 	@Id
@@ -46,6 +49,15 @@ class JournalLine {
 	@Column(length = 200)
 	private String memo;
 
+	@Column(name = "deleted_at")
+	private Instant deletedAt;
+
+	@Column(name = "deleted_by_sub", length = 100)
+	private String deletedBySub;
+
+	@Column(name = "deleted_by_name", length = 200)
+	private String deletedByName;
+
 	protected JournalLine() {
 	}
 
@@ -56,6 +68,12 @@ class JournalLine {
 		this.debit = debit;
 		this.credit = credit;
 		this.memo = memo;
+	}
+
+	void markDeleted(Actor actor, Instant at) {
+		this.deletedAt = at;
+		this.deletedBySub = actor.sub();
+		this.deletedByName = actor.name();
 	}
 
 	Side side() {
