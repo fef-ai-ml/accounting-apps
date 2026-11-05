@@ -6,7 +6,34 @@
 			<label value="Year"/>
 			<intbox value="@load(vm.year)" width="80px" onChange="@command('changeYear', year=self.value)"/>
 			<button label="@load(vm.openYearLabel)" visible="@load(vm.canManage and vm.year ne null)" onClick="@command('openYear')"/>
+			<button label="Close year" visible="@load(vm.canCloseYear)" onClick="@command('startCloseYear')"/>
+			<button label="Reopen year" visible="@load(vm.canReopenYear)" onClick="@command('startReopenYear')"/>
+			<label value="@load(vm.yearStatusText)"/>
 		</hlayout>
+
+		<groupbox mold="3d" sclass="card" visible="@load(vm.closingYear)">
+			<caption label="Close year"/>
+			<label value="@load(vm.closeYearText)"/>
+			<separator/>
+			<combobox value="@bind(vm.retainedEarningsText)" model="@load(vm.equityAccounts)" autodrop="true" placeholder="Retained earnings account" width="260px">
+				<template name="model"><comboitem label="@load(each.label)"/></template>
+			</combobox>
+			<hbox>
+				<button label="Confirm close" autodisable="self" onClick="@command('confirmCloseYear')"/>
+				<button label="Cancel" onClick="@command('cancelCloseYear')"/>
+			</hbox>
+		</groupbox>
+
+		<groupbox mold="3d" sclass="card" visible="@load(vm.reopeningYear)">
+			<caption label="Reopen year"/>
+			<label value="@load(vm.reopenYearText)"/>
+			<separator/>
+			<textbox value="@bind(vm.reason)" maxlength="500" placeholder="Reason" hflex="1"/>
+			<hbox>
+				<button label="Confirm year reopen" autodisable="self" onClick="@command('confirmReopenYear')"/>
+				<button label="Cancel" onClick="@command('cancelReopenYear')"/>
+			</hbox>
+		</groupbox>
 
 		<groupbox mold="3d" sclass="card" visible="@load(not empty vm.blockingDrafts)">
 			<caption label="@load(vm.blockedText)"/>
@@ -44,7 +71,7 @@
 					<listcell label="@load(period.closedByName)"/>
 					<listcell>
 						<button label="Close" visible="@load(vm.canManage and period.open)" onClick="@command('close', period=period)"/>
-						<button label="Reopen" visible="@load(vm.canManage and not period.open)" onClick="@command('startReopen', period=period)"/>
+						<button label="Reopen" visible="@load(vm.canManage and not period.open and not vm.yearClosed)" onClick="@command('startReopen', period=period)"/>
 					</listcell>
 				</listitem>
 			</template>

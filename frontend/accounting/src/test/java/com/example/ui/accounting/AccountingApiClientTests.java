@@ -124,4 +124,42 @@ class AccountingApiClientTests {
 		server.verify();
 	}
 
+	@Test
+	void statementsArriveWithTheirRowsAndAmounts() {
+		server.expect(requestTo(BASE + "/reports/income-statement?from=2026-01-01&to=2026-12-31")).andRespond(withSuccess("""
+				{"from": "2026-01-01", "to": "2026-12-31", "revenue": [{"accountId": 1, "code": "4000", "name": "P", "depth": 0, "amount": "10.00"}],
+				 "expenses": [], "totalRevenue": "10.00", "totalExpenses": "0.00", "netProfit": "10.00"}
+				""", MediaType.APPLICATION_JSON));
+		server.expect(requestTo(BASE + "/reports/balance-sheet?asOf=2026-06-30")).andRespond(withSuccess("""
+				{"asOf": "2026-06-30", "assets": [], "liabilities": [], "equity": [], "earningsNotYetClosed": "0.00", "totalAssets": "0.00",
+				 "totalLiabilities": "0.00", "totalEquity": "0.00", "totalLiabilitiesAndEquity": "0.00", "difference": "0.00"}
+				""", MediaType.APPLICATION_JSON));
+
+		IncomeStatementDto income = client.incomeStatement(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+		BalanceSheetDto balance = client.balanceSheet(LocalDate.of(2026, 6, 30));
+
+		assertThat(income.revenue().get(0).amount()).isEqualByComparingTo("10.00");
+		assertThat(balance.difference()).isEqualByComparingTo("0");
+	}
+
+	@Test
+	void closingAndReopeningAYearSendTheirBodies() {
+		server.expect(requestTo(BASE + "/years/2026")).andRespond(withSuccess("""
+				{"year": 2026, "closed": true, "entryId": 9, "entryNo": "JE-2026-000009"}
+				""", MediaType.APPLICATION_JSON));
+		server.expect(requestTo(BASE + "/years/2026/close")).andExpect(method(HttpMethod.POST))
+				.andExpect(content().json("{\"retainedEarningsAccountId\": 5}"))
+				.andRespond(withSuccess("""
+						{"year": 2026, "entryId": 9, "entryNo": "JE-2026-000009", "netProfit": "-20.00"}
+						""", MediaType.APPLICATION_JSON));
+		server.expect(requestTo(BASE + "/years/2026/reopen")).andExpect(method(HttpMethod.POST))
+				.andExpect(content().json("{\"reason\": \"late\"}"))
+				.andRespond(withSuccess("""
+						{"year": 2026, "closed": false}
+						""", MediaType.APPLICATION_JSON));
+
+		assertThat(client.yearStatus(2026).entryNo()).isEqualTo("JE-2026-000009");
+		assertThat(client.closeYear(2026, 5).netProfit()).isEqualByComparingTo("-20.00");
+		assertThat(client.reopenYear(2026, "late").closed()).isFalse();
+	}
 }

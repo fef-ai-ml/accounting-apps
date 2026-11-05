@@ -66,6 +66,9 @@ public class JournalEntry {
 	@Column(name = "reversed_by")
 	private Long reversedBy;
 
+	@Column(name = "closing_year")
+	private Integer closingYear;
+
 	@Column(name = "created_by_sub", nullable = false, length = 100, updatable = false)
 	private String createdBySub;
 
@@ -168,6 +171,10 @@ public class JournalEntry {
 		this.reversalOf = originalId;
 	}
 
+	void closingYear(Integer year) {
+		this.closingYear = year;
+	}
+
 	void markPosted(String entryNo, Actor actor, Instant at) {
 		this.entryNo = entryNo;
 		this.status = EntryStatus.POSTED;
@@ -223,6 +230,10 @@ public class JournalEntry {
 
 	public Long getReversedBy() {
 		return reversedBy;
+	}
+
+	public Integer getClosingYear() {
+		return closingYear;
 	}
 
 	public String getCreatedBySub() {

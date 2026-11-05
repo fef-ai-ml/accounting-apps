@@ -67,6 +67,11 @@ final class ZkDriver {
 		au("onChange", component.getUuid(), "{\"value\":\"" + text + "\",\"start\":" + text.length() + "}");
 	}
 
+	/** A number box's browser sends a JSON number, not text; text makes Intbox.getValue fail. */
+	void change(Component component, int number) throws Exception {
+		au("onChange", component.getUuid(), "{\"value\":" + number + "}");
+	}
+
 	/** Filters the list by typing, then selects the item, in the requests a browser's combobox sends. */
 	void pick(Combobox box, String label) throws Exception {
 		String typed = "{\"value\":\"" + label + "\",\"start\":" + label.length() + "}";

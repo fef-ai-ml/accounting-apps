@@ -214,6 +214,34 @@ abstract class AccountingTestSupport {
 				.setParameter("credit", credit).executeUpdate();
 	}
 
+	/** A closing draft of 100.00 dated 31 December; the year's December must exist. Call inside a transaction. */
+	long closingDraft(int year, long debitAccount, long creditAccount) {
+		long december = ((Number) entityManager.createNativeQuery(
+				"select id from accounting.fiscal_period where year = " + year + " and month = 12").getSingleResult()).longValue();
+		long entry = insertEntry(december, "DRAFT");
+		sql("update accounting.journal_entry set entry_date = make_date(" + year + ", 12, 31), closing_year = " + year
+				+ " where id = :id", entry);
+		insertLine(entry, 1, debitAccount, "100.00", "0");
+		insertLine(entry, 2, creditAccount, "0", "100.00");
+		return entry;
+	}
+
+	void postBySql(long entry) {
+		sql("update accounting.journal_entry set status = 'POSTED', entry_no = 'JE-S" + entry + "' where id = :id", entry);
+	}
+
+	void closeMonthsBySql(int year) {
+		entityManager.createNativeQuery("update accounting.fiscal_period set status = 'CLOSED' where year = " + year).executeUpdate();
+	}
+
+	/** Posts a closing entry and closes the year's months, as the service does. Call inside a transaction. */
+	long closeBySql(int year, long debitAccount, long creditAccount) {
+		long entry = closingDraft(year, debitAccount, creditAccount);
+		postBySql(entry);
+		closeMonthsBySql(year);
+		return entry;
+	}
+
 	/** Runs native SQL with no result in the current transaction. */
 	int sql(String statement, long id) {
 		return entityManager.createNativeQuery(statement).setParameter("id", id).executeUpdate();

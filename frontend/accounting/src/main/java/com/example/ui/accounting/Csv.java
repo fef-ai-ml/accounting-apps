@@ -43,6 +43,28 @@ final class Csv {
 		return bytes(rows);
 	}
 
+	static byte[] incomeStatement(IncomeStatementDto report) {
+		return statement(line("Income statement", String.valueOf(report.from()), String.valueOf(report.to())), ReportLines.of(report));
+	}
+
+	static byte[] balanceSheet(BalanceSheetDto report) {
+		return statement(line("Balance sheet as of", String.valueOf(report.asOf())), ReportLines.of(report));
+	}
+
+	/** A parent's amount includes its children, so Level lets a spreadsheet user sum one level only. */
+	private static byte[] statement(String title, List<ReportLine> lines) {
+		List<String> rows = new ArrayList<>();
+		rows.add(title);
+		rows.add("Section,Code,Name,Level,Amount");
+		for (ReportLine row : lines) {
+			if (row.amount() != null) {
+				rows.add(line(row.section(), text(row.code()), text(row.name()), row.code().isEmpty() ? "" : String.valueOf(row.depth()),
+						amount(row.amount())));
+			}
+		}
+		return bytes(rows);
+	}
+
 	/** An account code is free text; a slash in it would turn the download URL into a 400. */
 	static String generalLedgerFileName(GeneralLedgerDto report) {
 		return ("general-ledger-" + report.accountCode() + "-" + report.from() + "-" + report.to() + ".csv")

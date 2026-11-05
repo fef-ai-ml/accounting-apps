@@ -31,6 +31,7 @@ import com.example.ui.accounting.EntrySummaryDto;
 import com.example.ui.accounting.PeriodDto;
 import com.example.ui.accounting.SettingsDto;
 import com.example.ui.accounting.TrialBalanceDto;
+import com.example.ui.accounting.YearStatusDto;
 import com.example.ui.common.CurrentUser;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -131,7 +132,8 @@ class AccountingScreensRenderTests {
 						new BigDecimal("700.00"))),
 				new BigDecimal("1000.00"), new BigDecimal("300.00"), new BigDecimal("700.00")));
 
-		assertThat(render("reports.zul")).contains("Kas Kecil", "1.000,00", "700,00", "Export CSV", "General ledger");
+		assertThat(render("reports.zul")).contains("Kas Kecil", "1.000,00", "700,00", "Export CSV", "General ledger", "Income statement",
+				"Balance sheet", "the closing entry has moved them");
 	}
 
 	@Test
@@ -143,4 +145,12 @@ class AccountingScreensRenderTests {
 		assertThat(render("audit.zul")).contains("Akuntan", "2026\\-03\\-15 00:30:00", "ACCOUNT_CHANGE", "account 5", "Kas Kecil");
 	}
 
+	@Test
+	void aClosedYearRendersItsCloseAndTheReopenButton() throws Exception {
+		when(accountingApiClient.periods(anyInt())).thenReturn(List.of(new PeriodDto(3L, 2026, 3, LocalDate.of(2026, 3, 1),
+				LocalDate.of(2026, 3, 31), "CLOSED", "Ani Accountant")));
+		when(accountingApiClient.yearStatus(anyInt())).thenReturn(new YearStatusDto(2026, true, 9L, "JE-2026-000009"));
+
+		assertThat(render("periods.zul")).contains("Reopen year", "Closed by JE\\-2026\\-000009");
+	}
 }

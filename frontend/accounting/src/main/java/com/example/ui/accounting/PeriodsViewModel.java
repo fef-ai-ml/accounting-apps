@@ -1,5 +1,6 @@
 package com.example.ui.accounting;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
@@ -20,7 +21,7 @@ import com.example.ui.common.ApiErrors;
 import com.example.ui.common.CurrentUser;
 import com.example.ui.common.SpringBeanVariableResolver;
 
-/** MVVM view model behind periods.zul: a year's months, close (with blocking drafts) and reopen (with a reason). */
+/** MVVM view model behind periods.zul: a year's months, close and reopen of a month and of the whole year. */
 @VariableResolver(SpringBeanVariableResolver.class)
 public class PeriodsViewModel {
 
@@ -44,6 +45,18 @@ public class PeriodsViewModel {
 
 	private String reason = "";
 
+	private YearStatusDto yearStatus;
+
+	private boolean closingYear;
+
+	private BigDecimal closeNet;
+
+	private List<AccountDto> equityAccounts = List.of();
+
+	private String retainedEarningsText = "";
+
+	private boolean reopeningYear;
+
 	@Init
 	public void init() {
 		try {
@@ -66,6 +79,8 @@ public class PeriodsViewModel {
 		blockingDrafts = List.of();
 		blockedPeriod = null;
 		reopening = null;
+		closingYear = false;
+		reopeningYear = false;
 		fetch();
 	}
 
@@ -131,6 +146,8 @@ public class PeriodsViewModel {
 	public void startReopen(@BindingParam("period") PeriodDto period) {
 		reopening = period;
 		reason = "";
+		closingYear = false;
+		reopeningYear = false;
 	}
 
 	@Command
@@ -155,6 +172,80 @@ public class PeriodsViewModel {
 		}
 	}
 
+	/** Shows what the close will move before anything happens. */
+	@Command
+	@NotifyChange("*")
+	public void startCloseYear() {
+		try {
+			closeNet = accountingApiClient.incomeStatement(LocalDate.of(year, 1, 1), LocalDate.of(year, 12, 31)).netProfit();
+			equityAccounts = accountingApiClient.accounts().stream()
+					.filter(account -> "EQUITY".equals(account.type()) && account.postable() && account.active())
+					.toList();
+			retainedEarningsText = equityAccounts.stream().filter(account -> "3200".equals(account.code())).findFirst()
+					.map(AccountDto::getLabel).orElse("");
+			closingYear = true;
+			reopening = null;
+			reopeningYear = false;
+		}
+		catch (RuntimeException ex) {
+			ApiErrors.show(ex);
+		}
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void cancelCloseYear() {
+		closingYear = false;
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void confirmCloseYear() {
+		AccountDto account = AccountMatcher.find(retainedEarningsText, equityAccounts).orElse(null);
+		if (account == null) {
+			Clients.showNotification("Choose an equity account", "warning", null, "middle_center", 3000);
+			return;
+		}
+		try {
+			accountingApiClient.closeYear(year, account.id());
+			load();
+		}
+		catch (RuntimeException ex) {
+			ApiErrors.show(ex);
+		}
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void startReopenYear() {
+		reopeningYear = true;
+		reason = "";
+		reopening = null;
+		closingYear = false;
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void cancelReopenYear() {
+		reopeningYear = false;
+	}
+
+	@Command
+	@NotifyChange("*")
+	public void confirmReopenYear() {
+		if (reason == null || reason.isBlank()) {
+			Clients.showNotification("Enter a reason", "warning", null, "middle_center", 3000);
+			return;
+		}
+		try {
+			accountingApiClient.reopenYear(year, reason.strip());
+			load();
+		}
+		catch (RuntimeException ex) {
+			ApiErrors.show(ex);
+		}
+	}
+
 	private void showBlockingDrafts(PeriodDto period) {
 		blockedPeriod = period;
 		try {
@@ -168,12 +259,14 @@ public class PeriodsViewModel {
 	}
 
 	private void fetch() {
+		yearStatus = null;
 		if (year == null) {
 			periods = List.of();
 			return;
 		}
 		try {
 			periods = accountingApiClient.periods(year);
+			yearStatus = periods.isEmpty() ? null : accountingApiClient.yearStatus(year);
 		}
 		catch (RuntimeException ex) {
 			periods = List.of();
@@ -224,6 +317,54 @@ public class PeriodsViewModel {
 
 	public void setReason(String reason) {
 		this.reason = reason;
+	}
+
+	public boolean isYearClosed() {
+		return yearStatus != null && yearStatus.closed();
+	}
+
+	public String getYearStatusText() {
+		return isYearClosed() ? "Closed by " + yearStatus.entryNo() : "";
+	}
+
+	public boolean isCanCloseYear() {
+		return canManage && !periods.isEmpty() && !isYearClosed();
+	}
+
+	public boolean isCanReopenYear() {
+		return canManage && isYearClosed();
+	}
+
+	public boolean isClosingYear() {
+		return closingYear;
+	}
+
+	public String getCloseYearText() {
+		if (!closingYear) {
+			return "";
+		}
+		String net = closeNet.signum() < 0 ? "net loss " : "net profit ";
+		return "Close " + year + ": " + net + Idr.format(closeNet.abs()) + " moves to the account below";
+	}
+
+	public List<AccountDto> getEquityAccounts() {
+		return equityAccounts;
+	}
+
+	public String getRetainedEarningsText() {
+		return retainedEarningsText;
+	}
+
+	public void setRetainedEarningsText(String retainedEarningsText) {
+		this.retainedEarningsText = retainedEarningsText;
+	}
+
+	public boolean isReopeningYear() {
+		return reopeningYear;
+	}
+
+	public String getReopenYearText() {
+		return reopeningYear ? "Reopen " + year + ": this reverses its closing entry and opens December" : "";
 	}
 
 }

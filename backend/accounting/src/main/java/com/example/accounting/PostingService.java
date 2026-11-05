@@ -64,6 +64,9 @@ public class PostingService {
 		Actor actor = Actor.current();
 		settings.require();
 		JournalEntry original = journal.loadForChange(id);
+		if (original.getClosingYear() != null) {
+			throw AccountingException.conflict("closing-entry", "A closing entry is undone by reopening its year");
+		}
 		if (original.getStatus() == EntryStatus.DRAFT) {
 			throw AccountingException.conflict("not-draft", "Only a posted entry can be reversed");
 		}
@@ -76,24 +79,28 @@ public class PostingService {
 		}
 		// The guard on journal_line would otherwise reject these lines with an unexplained 500.
 		journal.checkAccountsUsable(original.getLines().stream().map(JournalLine::getAccountId).toList());
-		Instant now = clock.instant();
 		FiscalPeriod period = lockOpenPeriod(date);
 
-		JournalEntry reversal = new JournalEntry(date, period.getId(), original.getReference(),
-				"Reversal of " + original.getEntryNo(), actor, now);
-		reversal.reversalOf(original.getId());
-		original.getLines().forEach(line -> reversal.addLine(line.getAccountId(), line.side().swapped(), line.getMemo()));
-		// Lines cannot be added to a posted entry, so the reversal goes in as a draft first.
-		entries.saveAndFlush(reversal);
-		assignNumberAndPost(reversal, actor);
-
-		original.markReversed(reversal.getId());
-		entries.saveAndFlush(original);
+		JournalEntry reversal = postReversal(original, date, period);
 		audit.record(AuditAction.REVERSE, "journal_entry", original.getId(),
 				Map.of("entryNo", original.getEntryNo(), "reversalEntryNo", reversal.getEntryNo()));
 
-		Long draftId = Boolean.TRUE.equals(request.copyToDraft()) ? copyToDraft(original, date, period, actor, now) : null;
+		Long draftId = Boolean.TRUE.equals(request.copyToDraft()) ? copyToDraft(original, date, period, actor, clock.instant()) : null;
 		return new ReverseResponse(EntryResponse.from(reversal), draftId);
+	}
+
+	/** Posts the mirror entry and marks the original. The caller has checked the accounts and holds the period, which is open. */
+	JournalEntry postReversal(JournalEntry original, LocalDate date, FiscalPeriod period) {
+		JournalEntry reversal = new JournalEntry(date, period.getId(), original.getReference(),
+				"Reversal of " + original.getEntryNo(), Actor.current(), clock.instant());
+		reversal.reversalOf(original.getId());
+		reversal.closingYear(original.getClosingYear());
+		original.getLines().forEach(line -> reversal.addLine(line.getAccountId(), line.side().swapped(), line.getMemo()));
+		postDirectly(reversal);
+
+		original.markReversed(reversal.getId());
+		entries.saveAndFlush(original);
+		return reversal;
 	}
 
 	private Long copyToDraft(JournalEntry original, LocalDate date, FiscalPeriod period, Actor actor, Instant now) {
@@ -101,6 +108,14 @@ public class PostingService {
 				actor, now);
 		original.getLines().forEach(line -> copy.addLine(line.getAccountId(), line.side(), line.getMemo()));
 		return entries.saveAndFlush(copy).getId();
+	}
+
+	/** Numbers and posts an entry the system built; no maker/checker. The caller holds its period, which must be open. */
+	void postDirectly(JournalEntry entry) {
+		Actor actor = Actor.current();
+		// Lines cannot be added to a posted entry, so it goes in as a draft first.
+		entries.saveAndFlush(entry);
+		assignNumberAndPost(entry, actor);
 	}
 
 	/** Holds the period FOR SHARE until commit, so a close either waits for this post or this post sees it closed. */

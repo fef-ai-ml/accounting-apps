@@ -63,6 +63,7 @@
 		</hlayout>
 
 		<hlayout valign="middle">
+			<label value="Closing entry" sclass="hint" visible="@load(vm.closingEntry)"/>
 			<button label="Save draft" iconSclass="z-icon-save" visible="@load(vm.draft and vm.canWrite)" autodisable="self"
 				w:onClick="if (jq('.z-window input[class*=-invalid]').length) event.stop();" onClick="@command('save')"/>
 			<button label="Delete" visible="@load(vm.saved and vm.draft and vm.canWrite)" autodisable="self" onClick="@command('delete')"/>
@@ -72,10 +73,10 @@
 			<label value="You prepared or edited this entry; another user must post it" sclass="hint" visible="@load(vm.posterBlocked)"/>
 
 			<datebox valueInLocalDate="@bind(vm.reverseDate)" format="yyyy-MM-dd" placeholder="Reversal date"
-				visible="@load(vm.posted and vm.canPost)" width="130px"/>
-			<button label="Reverse" visible="@load(vm.posted and vm.canPost)" autodisable="self"
+				visible="@load(vm.reversible and vm.canPost)" width="130px"/>
+			<button label="Reverse" visible="@load(vm.reversible and vm.canPost)" autodisable="self"
 				w:onClick="if (jq('.z-window input[class*=-invalid]').length) event.stop();" onClick="@command('reverse', copy=false)"/>
-			<button label="Reverse &amp; copy to draft" visible="@load(vm.posted and vm.canPost)" autodisable="self"
+			<button label="Reverse &amp; copy to draft" visible="@load(vm.reversible and vm.canPost)" autodisable="self"
 				w:onClick="if (jq('.z-window input[class*=-invalid]').length) event.stop();" onClick="@command('reverse', copy=true)"/>
 
 			<button label="@load(vm.linkText)" visible="@load(not empty vm.linkText)" onClick="@command('openLinked')"/>

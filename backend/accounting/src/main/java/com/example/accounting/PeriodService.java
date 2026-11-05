@@ -14,14 +14,17 @@ public class PeriodService {
 
 	private final FiscalPeriodRepository periods;
 
+	private final JournalEntryRepository entries;
+
 	private final AccountingSettings settings;
 
 	private final AuditTrail audit;
 
 	private final Clock clock;
 
-	PeriodService(FiscalPeriodRepository periods, AccountingSettings settings, AuditTrail audit, Clock clock) {
+	PeriodService(FiscalPeriodRepository periods, JournalEntryRepository entries, AccountingSettings settings, AuditTrail audit, Clock clock) {
 		this.periods = periods;
+		this.entries = entries;
 		this.settings = settings;
 		this.audit = audit;
 		this.clock = clock;
@@ -68,6 +71,9 @@ public class PeriodService {
 		FiscalPeriod period = periods.lockForClosing(id).orElseThrow(() -> notFound(id));
 		if (period.getStatus() == PeriodStatus.OPEN) {
 			return PeriodResponse.from(period);
+		}
+		if (entries.findActiveClose(period.getYear()).isPresent()) {
+			throw AccountingException.conflict("year-closed", "Reopen the year " + period.getYear() + " first");
 		}
 		period.reopen();
 		audit.record(AuditAction.PERIOD_REOPEN, "fiscal_period", id,

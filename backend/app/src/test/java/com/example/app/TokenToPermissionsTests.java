@@ -275,6 +275,31 @@ class TokenToPermissionsTests {
 				.andExpect(jsonPath("$.totalDebit").value("100.00"))
 				.andExpect(jsonPath("$.difference").value("0.00"));
 
+		long retained = ((List<Number>) JsonPath.read(accounts, "$[?(@.code=='3200')].id")).get(0).longValue();
+		String closePath = "/api/accounting/years/" + year + "/close";
+		String closeBody = "{\"retainedEarningsAccountId\": " + retained + "}";
+		String reopenPath = "/api/accounting/years/" + year + "/reopen";
+		String reopenBody = "{\"reason\": \"late invoice\"}";
+		mvc.perform(post(closePath).header(HttpHeaders.AUTHORIZATION, bookkeeper)
+				.contentType(MediaType.APPLICATION_JSON).content(closeBody)).andExpect(status().isForbidden());
+		mvc.perform(post(closePath).header(HttpHeaders.AUTHORIZATION, viewer)
+				.contentType(MediaType.APPLICATION_JSON).content(closeBody)).andExpect(status().isForbidden());
+		mvc.perform(post(closePath).header(HttpHeaders.AUTHORIZATION, accountant)
+						.contentType(MediaType.APPLICATION_JSON).content(closeBody))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.netProfit").value("100.00"));
+		mvc.perform(get("/api/accounting/years/" + year).header(HttpHeaders.AUTHORIZATION, viewer))
+				.andExpect(jsonPath("$.closed").value(true));
+		mvc.perform(get("/api/accounting/reports/income-statement").param("from", year + "-01-01").param("to", year + "-12-31")
+						.header(HttpHeaders.AUTHORIZATION, viewer))
+				.andExpect(jsonPath("$.netProfit").value("100.00"));
+		mvc.perform(post(reopenPath).header(HttpHeaders.AUTHORIZATION, bookkeeper)
+				.contentType(MediaType.APPLICATION_JSON).content(reopenBody)).andExpect(status().isForbidden());
+		mvc.perform(post(reopenPath).header(HttpHeaders.AUTHORIZATION, demoAdmin)
+						.contentType(MediaType.APPLICATION_JSON).content(reopenBody))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.closed").value(false));
+
 		mvc.perform(post("/api/accounting/setup").header(HttpHeaders.AUTHORIZATION, acmeAdmin)).andExpect(status().isOk());
 		String acmeAccounts = mvc.perform(get("/api/accounting/accounts").header(HttpHeaders.AUTHORIZATION, acmeAdmin))
 				.andReturn().getResponse().getContentAsString();

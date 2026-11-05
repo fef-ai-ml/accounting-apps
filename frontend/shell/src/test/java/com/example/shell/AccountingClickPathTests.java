@@ -45,17 +45,21 @@ import com.example.ui.accounting.AccountRequest;
 import com.example.ui.accounting.AccountingApiClient;
 import com.example.ui.accounting.AuditPageDto;
 import com.example.ui.accounting.AuditRowDto;
+import com.example.ui.accounting.BalanceSheetDto;
 import com.example.ui.accounting.EntryDto;
 import com.example.ui.accounting.EntryFilter;
 import com.example.ui.accounting.EntryPageDto;
 import com.example.ui.accounting.EntrySummaryDto;
 import com.example.ui.accounting.EntryViewModel;
 import com.example.ui.accounting.GeneralLedgerDto;
+import com.example.ui.accounting.IncomeStatementDto;
 import com.example.ui.accounting.LineDto;
 import com.example.ui.accounting.PeriodDto;
 import com.example.ui.accounting.ReverseResultDto;
 import com.example.ui.accounting.SettingsDto;
+import com.example.ui.accounting.StatementRowDto;
 import com.example.ui.accounting.TrialBalanceDto;
+import com.example.ui.accounting.YearStatusDto;
 import com.example.ui.common.CurrentUser;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -154,7 +158,7 @@ class AccountingClickPathTests {
 		return new EntryDto(id, number, LocalDate.of(2026, 3, 15), 1L, "R", "Desc", status, null, null, "A", "B", version,
 				new BigDecimal("100.00"), List.of(new LineDto(1, 2L, new BigDecimal("100.00"), null, ""),
 						new LineDto(2, 4L, null, new BigDecimal("100.00"), "")),
-				false);
+				false, null);
 	}
 
 	private static HttpClientErrorException problem(HttpStatus status, String code, String detail) {
@@ -382,6 +386,27 @@ class AccountingClickPathTests {
 	}
 
 	@Test
+	void aClosingEntryIsLabelledAndOffersNoReversal() throws Exception {
+		EntryDto closing = new EntryDto(7L, "JE-2026-000009", LocalDate.of(2026, 12, 31), 1L, null, "Closing entry for 2026", "POSTED", null,
+				null, "A", "B", 1L, new BigDecimal("100.00"), List.of(new LineDto(1, 2L, new BigDecimal("100.00"), null, ""),
+						new LineDto(2, 4L, null, new BigDecimal("100.00"), "")),
+				false, 2026);
+		openEntry(closing);
+
+		assertThat(zk.all(Label.class).stream().filter(AccountingClickPathTests::shown)).extracting(Label::getValue).contains("Closing entry");
+		assertThat(shown(zk.button("Reverse"))).isFalse();
+		assertThat(shown(zk.button("Reverse & copy to draft"))).isFalse();
+	}
+
+	@Test
+	void anOrdinaryPostedEntryStillOffersReversalAndNoLabel() throws Exception {
+		openEntry(entry(7L, "JE-1", "POSTED", 1L));
+
+		assertThat(zk.all(Label.class).stream().filter(AccountingClickPathTests::shown)).extracting(Label::getValue).doesNotContain("Closing entry");
+		assertThat(shown(zk.button("Reverse"))).isTrue();
+	}
+
+	@Test
 	void deleteUsesTheVersionTheQuestionWasAskedAbout() throws Exception {
 		openEntry(entry(7L, null, "DRAFT", 3));
 		when(api.updateEntry(eq(7L), any())).thenReturn(entry(7L, null, "DRAFT", 4));
@@ -464,6 +489,78 @@ class AccountingClickPathTests {
 		page("reports.zul");
 
 		assertThat(zk.all(Label.class)).extracting(Label::getValue).contains("As of 2026-03-31");
+	}
+
+	private Button nthButton(String label, int index) {
+		return zk.all(Button.class).stream().filter(button -> label.equals(button.getLabel())).toList().get(index);
+	}
+
+	@Test
+	void anIncomeStatementRunRendersAndExportsWhatItHolds() throws Exception {
+		when(api.trialBalance(any())).thenReturn(new TrialBalanceDto(TODAY, List.of(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+		when(api.incomeStatement(eq(TODAY.withDayOfYear(1)), eq(TODAY))).thenReturn(new IncomeStatementDto(LocalDate.of(2026, 1, 1),
+				LocalDate.of(2026, 3, 31), List.of(new StatementRowDto(1L, "4100", "Penjualan", 0, new BigDecimal("1000.00"))), List.of(),
+				new BigDecimal("1000.00"), BigDecimal.ZERO.setScale(2), new BigDecimal("1000.00")));
+		page("reports.zul");
+
+		zk.click(nthButton("Run", 2));
+
+		assertThat(zk.all(Listcell.class)).extracting(Listcell::getLabel).contains("4100", "1.000,00");
+		assertThat(zk.all(Label.class)).extracting(Label::getValue).contains("Penjualan", "Net profit", "2026-01-01 to 2026-03-31");
+
+		zk.click(nthButton("Export CSV", 2));
+		List<String> file = zk.download();
+		assertThat(file.get(0)).contains("income-statement-2026-01-01-2026-03-31.csv");
+		assertThat(file.get(1)).contains("Revenue,4100,Penjualan,0,1000.00");
+	}
+
+	@Test
+	void aBalanceSheetRunShowsTheDifference() throws Exception {
+		when(api.trialBalance(any())).thenReturn(new TrialBalanceDto(TODAY, List.of(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+		BigDecimal zero = BigDecimal.ZERO.setScale(2);
+		when(api.balanceSheet(eq(TODAY))).thenReturn(new BalanceSheetDto(LocalDate.of(2026, 6, 30),
+				List.of(new StatementRowDto(1L, "1290", "Akumulasi", 0, new BigDecimal("-5.00"))), List.of(), List.of(), new BigDecimal("-5.00"),
+				new BigDecimal("-5.00"), zero, new BigDecimal("-5.00"), new BigDecimal("-5.00"), zero));
+		page("reports.zul");
+
+		zk.click(nthButton("Run", 3));
+
+		assertThat(zk.all(Listcell.class)).extracting(Listcell::getLabel).contains("-5,00", "0,00");
+		assertThat(zk.all(Label.class)).extracting(Label::getValue).contains("Earnings not yet closed", "Difference", "As of 2026-06-30");
+	}
+
+	/** A browser sends null for an emptied date box; the text "" would be refused by the box itself. */
+	private void clear(Datebox box) throws Exception {
+		zk.au("onChange", box.getUuid(), "{\"value\":null,\"start\":0}");
+	}
+
+	@Test
+	void aClearedReportDateWarnsAndCallsNoApi() throws Exception {
+		when(api.trialBalance(any())).thenReturn(new TrialBalanceDto(TODAY, List.of(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+		page("reports.zul");
+		List<Datebox> dates = zk.all(Datebox.class);
+
+		clear(dates.get(3));
+		zk.click(nthButton("Run", 2));
+		assertThat(zk.response).contains("Choose a date range");
+		verify(api, never()).incomeStatement(any(), any());
+
+		clear(dates.get(5));
+		zk.click(nthButton("Run", 3));
+		assertThat(zk.response).contains("Choose a date");
+		verify(api, never()).balanceSheet(any());
+	}
+
+	@Test
+	void aRefusedStatementRunSaysWhyAndLeavesNothingToExport() throws Exception {
+		when(api.trialBalance(any())).thenReturn(new TrialBalanceDto(TODAY, List.of(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+		when(api.incomeStatement(any(), any())).thenThrow(problem(HttpStatus.BAD_REQUEST, "validation", "from must not be after to"));
+		page("reports.zul");
+
+		zk.click(nthButton("Run", 2));
+
+		assertThat(zk.response).contains("from must not be after to");
+		assertThat(nthButton("Export CSV", 2).isDisabled()).isTrue();
 	}
 
 	@Test
@@ -600,6 +697,137 @@ class AccountingClickPathTests {
 		zk.click(zk.button("Close"));
 
 		assertThat(zk.response).contains("This period still has drafts");
+	}
+
+	private static final AccountDto RETAINED = new AccountDto(9L, "3200", "Laba Ditahan", "EQUITY", null, true, true);
+
+	private static final AccountDto CAPITAL = new AccountDto(10L, "3100", "Modal", "EQUITY", null, true, true);
+
+	private static final int YEAR = TODAY.getYear();
+
+	private void aYear(boolean closed, String net) {
+		when(api.periods(anyInt())).thenReturn(List.of(new PeriodDto(3L, YEAR, 3, LocalDate.of(YEAR, 3, 1), LocalDate.of(YEAR, 3, 31),
+				closed ? "CLOSED" : "OPEN", null)));
+		when(api.yearStatus(anyInt())).thenReturn(new YearStatusDto(YEAR, closed, closed ? 9L : null, closed ? "JE-1" : null));
+		when(api.accounts()).thenReturn(List.of(KAS, CAPITAL, RETAINED));
+		when(api.incomeStatement(eq(LocalDate.of(YEAR, 1, 1)), eq(LocalDate.of(YEAR, 12, 31)))).thenReturn(new IncomeStatementDto(
+				LocalDate.of(YEAR, 1, 1), LocalDate.of(YEAR, 12, 31), List.of(), List.of(), BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal(net)));
+	}
+
+	private Textbox shownTextbox() {
+		return zk.all(Textbox.class).stream().filter(AccountingClickPathTests::shown).filter(box -> !(box instanceof Combobox)).findFirst().orElseThrow();
+	}
+
+	@Test
+	void closingAYearStatesTheNetDefaultsTheAccountAndAsksFirst() throws Exception {
+		aYear(false, "700.00");
+		page("periods.zul");
+		assertThat(shown(zk.button("Close year"))).isTrue();
+		assertThat(shown(zk.button("Reopen year"))).isFalse();
+
+		zk.click(zk.button("Close year"));
+		verify(api, never()).closeYear(anyInt(), anyLong());
+		assertThat(zk.all(Label.class)).extracting(Label::getValue).contains("Close " + YEAR + ": net profit 700,00 moves to the account below");
+		Combobox account = zk.all(Combobox.class).stream().filter(AccountingClickPathTests::shown).findFirst().orElseThrow();
+		assertThat(account.getValue()).isEqualTo("3200 Laba Ditahan");
+
+		zk.click(zk.button("Confirm close"));
+		verify(api).closeYear(YEAR, 9L);
+		assertThat(shown(zk.button("Confirm close"))).isFalse();
+	}
+
+	@Test
+	void aLossIsStatedAsALossAndAnotherAccountCanBeChosen() throws Exception {
+		aYear(false, "-200.00");
+		page("periods.zul");
+
+		zk.click(zk.button("Close year"));
+		assertThat(zk.all(Label.class)).extracting(Label::getValue).contains("Close " + YEAR + ": net loss 200,00 moves to the account below");
+		Combobox account = zk.all(Combobox.class).stream().filter(AccountingClickPathTests::shown).findFirst().orElseThrow();
+		assertThat(account.getModel().getSize()).as("only equity accounts are offered").isEqualTo(2);
+
+		zk.change(account, CAPITAL.getLabel());
+		zk.click(zk.button("Confirm close"));
+		verify(api).closeYear(YEAR, 10L);
+	}
+
+	@Test
+	void anAccountThatMatchesNothingWarnsAndDoesNotClose() throws Exception {
+		aYear(false, "700.00");
+		page("periods.zul");
+		zk.click(zk.button("Close year"));
+
+		zk.change(zk.all(Combobox.class).stream().filter(AccountingClickPathTests::shown).findFirst().orElseThrow(), "nope");
+		zk.click(zk.button("Confirm close"));
+
+		assertThat(zk.response).contains("Choose an equity account");
+		verify(api, never()).closeYear(anyInt(), anyLong());
+	}
+
+	@Test
+	void aRefusedCloseShowsTheProblemAndKeepsThePanel() throws Exception {
+		aYear(false, "700.00");
+		when(api.closeYear(anyInt(), anyLong())).thenThrow(problem(HttpStatus.CONFLICT, "year-has-drafts", "Post or delete the 2 draft entries"));
+		page("periods.zul");
+		zk.click(zk.button("Close year"));
+
+		zk.click(zk.button("Confirm close"));
+
+		assertThat(zk.response).contains("Post or delete the 2 draft entries");
+		assertThat(shown(zk.button("Confirm close"))).isTrue();
+	}
+
+	@Test
+	void changingTheYearDropsAnOpenClosePanel() throws Exception {
+		aYear(false, "700.00");
+		page("periods.zul");
+		zk.click(zk.button("Close year"));
+		assertThat(shown(zk.button("Confirm close"))).isTrue();
+
+		zk.change(zk.all(Intbox.class).get(0), YEAR - 1);
+
+		assertThat(shown(zk.button("Confirm close"))).isFalse();
+		verify(api, never()).closeYear(anyInt(), anyLong());
+	}
+
+	@Test
+	void aFailedNetLoadShowsTheProblemAndOpensNoPanel() throws Exception {
+		aYear(false, "700.00");
+		when(api.incomeStatement(any(), any())).thenThrow(problem(HttpStatus.BAD_REQUEST, "validation", "Reports are down"));
+		page("periods.zul");
+
+		zk.click(zk.button("Close year"));
+
+		assertThat(zk.response).contains("Reports are down");
+		assertThat(shown(zk.button("Confirm close"))).isFalse();
+	}
+
+	@Test
+	void reopeningAClosedYearNeedsAReasonAndHidesMonthReopen() throws Exception {
+		aYear(true, "700.00");
+		page("periods.zul");
+		assertThat(shown(zk.button("Close year"))).isFalse();
+		assertThat(rowButtons(zk.all(Listitem.class).get(0))).isEmpty();
+		assertThat(zk.all(Label.class)).extracting(Label::getValue).contains("Closed by JE-1");
+
+		zk.click(zk.button("Reopen year"));
+		zk.click(zk.button("Confirm year reopen"));
+		assertThat(zk.response).contains("Enter a reason");
+		verify(api, never()).reopenYear(anyInt(), anyString());
+
+		zk.change(shownTextbox(), "late invoice");
+		zk.click(zk.button("Confirm year reopen"));
+		verify(api).reopenYear(YEAR, "late invoice");
+	}
+
+	@Test
+	void withoutThePermissionNoYearActionIsOffered() throws Exception {
+		aYear(false, "700.00");
+		can("accounting:read");
+		page("periods.zul");
+
+		assertThat(shown(zk.button("Close year"))).isFalse();
+		assertThat(shown(zk.button("Reopen year"))).isFalse();
 	}
 
 	@Test

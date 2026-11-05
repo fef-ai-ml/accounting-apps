@@ -179,7 +179,7 @@ class EntryFormTests {
 	void anEntryLoadsWithItsAccountsAndZeroSidesEmpty() {
 		EntryDto dto = new EntryDto(7L, null, DATE, 3L, "R", "Sale", "DRAFT", null, null, "maker", null, 2L, money("5.00"),
 				List.of(new LineDto(1, 11L, money("5.00"), money("0.00"), "m"), new LineDto(2, 41L, money("0.00"), money("5.00"), null)),
-				false);
+				false, null);
 
 		EntryForm form = EntryForm.from(dto, Map.of(11L, CASH, 41L, SALES));
 

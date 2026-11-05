@@ -421,6 +421,15 @@ public class EntryViewModel {
 		return entry != null && "POSTED".equals(entry.status());
 	}
 
+	public boolean isClosingEntry() {
+		return entry != null && entry.closingYear() != null;
+	}
+
+	/** Only reopening its year undoes a closing entry. */
+	public boolean isReversible() {
+		return isPosted() && !isClosingEntry();
+	}
+
 	public boolean isReadOnly() {
 		return !isDraft() || !canWrite;
 	}
