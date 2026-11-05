@@ -6,6 +6,8 @@
 			<tabs>
 				<tab label="Trial balance"/>
 				<tab label="General ledger"/>
+				<tab label="Income statement"/>
+				<tab label="Balance sheet"/>
 			</tabs>
 			<tabpanels>
 				<tabpanel>
@@ -35,6 +37,8 @@
 						</template>
 					</listbox>
 					<label value="@load(vm.trialTotals)"/>
+					<separator/>
+					<label sclass="hint" value="After a year is closed, revenue and expense show zero at 31 December, because the closing entry has moved them to retained earnings. The Income statement tab shows that year's figures."/>
 				</tabpanel>
 				<tabpanel>
 					<hlayout sclass="filters card" valign="middle">
@@ -72,6 +76,54 @@
 						</template>
 					</listbox>
 					<label value="@load(vm.ledgerClosing)"/>
+				</tabpanel>
+				<tabpanel>
+					<hlayout sclass="filters card" valign="middle">
+						<label value="From"/>
+						<datebox valueInLocalDate="@bind(vm.incomeFrom)" format="yyyy-MM-dd" width="130px"/>
+						<label value="To"/>
+						<datebox valueInLocalDate="@bind(vm.incomeTo)" format="yyyy-MM-dd" width="130px"/>
+						<button label="Run" onClick="@command('runIncomeStatement')"/>
+						<button label="Export CSV" iconSclass="z-icon-download" disabled="@load(vm.income eq null)" onClick="@command('exportIncomeStatement')"/>
+					</hlayout>
+					<label value="@load(vm.incomeHeading)"/>
+					<listbox model="@load(vm.incomeLines)" emptyMessage="Choose the dates and press Run" sclass="card">
+						<listhead>
+							<listheader label="Code" width="90px"/>
+							<listheader label="Account"/>
+							<listheader label="Amount" width="170px" align="right"/>
+						</listhead>
+						<template name="model" var="line">
+							<listitem>
+								<listcell label="@load(line.code)"/>
+								<listcell><label value="@load(line.name)" style="@load(line.style)"/></listcell>
+								<listcell label="@load(line.amountText)"/>
+							</listitem>
+						</template>
+					</listbox>
+				</tabpanel>
+				<tabpanel>
+					<hlayout sclass="filters card" valign="middle">
+						<label value="As of"/>
+						<datebox valueInLocalDate="@bind(vm.balanceAsOf)" format="yyyy-MM-dd" width="130px"/>
+						<button label="Run" onClick="@command('runBalanceSheet')"/>
+						<button label="Export CSV" iconSclass="z-icon-download" disabled="@load(vm.balance eq null)" onClick="@command('exportBalanceSheet')"/>
+					</hlayout>
+					<label value="@load(vm.balanceHeading)"/>
+					<listbox model="@load(vm.balanceLines)" emptyMessage="Choose a date and press Run" sclass="card">
+						<listhead>
+							<listheader label="Code" width="90px"/>
+							<listheader label="Account"/>
+							<listheader label="Amount" width="170px" align="right"/>
+						</listhead>
+						<template name="model" var="line">
+							<listitem>
+								<listcell label="@load(line.code)"/>
+								<listcell><label value="@load(line.name)" style="@load(line.style)"/></listcell>
+								<listcell label="@load(line.amountText)"/>
+							</listitem>
+						</template>
+					</listbox>
 				</tabpanel>
 			</tabpanels>
 		</tabbox>

@@ -131,7 +131,8 @@ class AccountingScreensRenderTests {
 						new BigDecimal("700.00"))),
 				new BigDecimal("1000.00"), new BigDecimal("300.00"), new BigDecimal("700.00")));
 
-		assertThat(render("reports.zul")).contains("Kas Kecil", "1.000,00", "700,00", "Export CSV", "General ledger");
+		assertThat(render("reports.zul")).contains("Kas Kecil", "1.000,00", "700,00", "Export CSV", "General ledger", "Income statement",
+				"Balance sheet", "the closing entry has moved them");
 	}
 
 	@Test

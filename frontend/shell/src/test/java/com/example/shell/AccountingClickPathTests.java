@@ -45,16 +45,19 @@ import com.example.ui.accounting.AccountRequest;
 import com.example.ui.accounting.AccountingApiClient;
 import com.example.ui.accounting.AuditPageDto;
 import com.example.ui.accounting.AuditRowDto;
+import com.example.ui.accounting.BalanceSheetDto;
 import com.example.ui.accounting.EntryDto;
 import com.example.ui.accounting.EntryFilter;
 import com.example.ui.accounting.EntryPageDto;
 import com.example.ui.accounting.EntrySummaryDto;
 import com.example.ui.accounting.EntryViewModel;
 import com.example.ui.accounting.GeneralLedgerDto;
+import com.example.ui.accounting.IncomeStatementDto;
 import com.example.ui.accounting.LineDto;
 import com.example.ui.accounting.PeriodDto;
 import com.example.ui.accounting.ReverseResultDto;
 import com.example.ui.accounting.SettingsDto;
+import com.example.ui.accounting.StatementRowDto;
 import com.example.ui.accounting.TrialBalanceDto;
 import com.example.ui.common.CurrentUser;
 
@@ -464,6 +467,78 @@ class AccountingClickPathTests {
 		page("reports.zul");
 
 		assertThat(zk.all(Label.class)).extracting(Label::getValue).contains("As of 2026-03-31");
+	}
+
+	private Button nthButton(String label, int index) {
+		return zk.all(Button.class).stream().filter(button -> label.equals(button.getLabel())).toList().get(index);
+	}
+
+	@Test
+	void anIncomeStatementRunRendersAndExportsWhatItHolds() throws Exception {
+		when(api.trialBalance(any())).thenReturn(new TrialBalanceDto(TODAY, List.of(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+		when(api.incomeStatement(eq(TODAY.withDayOfYear(1)), eq(TODAY))).thenReturn(new IncomeStatementDto(LocalDate.of(2026, 1, 1),
+				LocalDate.of(2026, 3, 31), List.of(new StatementRowDto(1L, "4100", "Penjualan", 0, new BigDecimal("1000.00"))), List.of(),
+				new BigDecimal("1000.00"), BigDecimal.ZERO.setScale(2), new BigDecimal("1000.00")));
+		page("reports.zul");
+
+		zk.click(nthButton("Run", 2));
+
+		assertThat(zk.all(Listcell.class)).extracting(Listcell::getLabel).contains("4100", "1.000,00");
+		assertThat(zk.all(Label.class)).extracting(Label::getValue).contains("Penjualan", "Net profit", "2026-01-01 to 2026-03-31");
+
+		zk.click(nthButton("Export CSV", 2));
+		List<String> file = zk.download();
+		assertThat(file.get(0)).contains("income-statement-2026-01-01-2026-03-31.csv");
+		assertThat(file.get(1)).contains("Revenue,4100,Penjualan,0,1000.00");
+	}
+
+	@Test
+	void aBalanceSheetRunShowsTheDifference() throws Exception {
+		when(api.trialBalance(any())).thenReturn(new TrialBalanceDto(TODAY, List.of(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+		BigDecimal zero = BigDecimal.ZERO.setScale(2);
+		when(api.balanceSheet(eq(TODAY))).thenReturn(new BalanceSheetDto(LocalDate.of(2026, 6, 30),
+				List.of(new StatementRowDto(1L, "1290", "Akumulasi", 0, new BigDecimal("-5.00"))), List.of(), List.of(), new BigDecimal("-5.00"),
+				new BigDecimal("-5.00"), zero, new BigDecimal("-5.00"), new BigDecimal("-5.00"), zero));
+		page("reports.zul");
+
+		zk.click(nthButton("Run", 3));
+
+		assertThat(zk.all(Listcell.class)).extracting(Listcell::getLabel).contains("-5,00", "0,00");
+		assertThat(zk.all(Label.class)).extracting(Label::getValue).contains("Earnings not yet closed", "Difference", "As of 2026-06-30");
+	}
+
+	/** A browser sends null for an emptied date box; the text "" would be refused by the box itself. */
+	private void clear(Datebox box) throws Exception {
+		zk.au("onChange", box.getUuid(), "{\"value\":null,\"start\":0}");
+	}
+
+	@Test
+	void aClearedReportDateWarnsAndCallsNoApi() throws Exception {
+		when(api.trialBalance(any())).thenReturn(new TrialBalanceDto(TODAY, List.of(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+		page("reports.zul");
+		List<Datebox> dates = zk.all(Datebox.class);
+
+		clear(dates.get(3));
+		zk.click(nthButton("Run", 2));
+		assertThat(zk.response).contains("Choose a date range");
+		verify(api, never()).incomeStatement(any(), any());
+
+		clear(dates.get(5));
+		zk.click(nthButton("Run", 3));
+		assertThat(zk.response).contains("Choose a date");
+		verify(api, never()).balanceSheet(any());
+	}
+
+	@Test
+	void aRefusedStatementRunSaysWhyAndLeavesNothingToExport() throws Exception {
+		when(api.trialBalance(any())).thenReturn(new TrialBalanceDto(TODAY, List.of(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+		when(api.incomeStatement(any(), any())).thenThrow(problem(HttpStatus.BAD_REQUEST, "validation", "from must not be after to"));
+		page("reports.zul");
+
+		zk.click(nthButton("Run", 2));
+
+		assertThat(zk.response).contains("from must not be after to");
+		assertThat(nthButton("Export CSV", 2).isDisabled()).isTrue();
 	}
 
 	@Test

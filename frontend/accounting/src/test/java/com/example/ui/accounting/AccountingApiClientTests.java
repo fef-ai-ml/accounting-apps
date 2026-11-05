@@ -124,4 +124,22 @@ class AccountingApiClientTests {
 		server.verify();
 	}
 
+	@Test
+	void statementsArriveWithTheirRowsAndAmounts() {
+		server.expect(requestTo(BASE + "/reports/income-statement?from=2026-01-01&to=2026-12-31")).andRespond(withSuccess("""
+				{"from": "2026-01-01", "to": "2026-12-31", "revenue": [{"accountId": 1, "code": "4000", "name": "P", "depth": 0, "amount": "10.00"}],
+				 "expenses": [], "totalRevenue": "10.00", "totalExpenses": "0.00", "netProfit": "10.00"}
+				""", MediaType.APPLICATION_JSON));
+		server.expect(requestTo(BASE + "/reports/balance-sheet?asOf=2026-06-30")).andRespond(withSuccess("""
+				{"asOf": "2026-06-30", "assets": [], "liabilities": [], "equity": [], "earningsNotYetClosed": "0.00", "totalAssets": "0.00",
+				 "totalLiabilities": "0.00", "totalEquity": "0.00", "totalLiabilitiesAndEquity": "0.00", "difference": "0.00"}
+				""", MediaType.APPLICATION_JSON));
+
+		IncomeStatementDto income = client.incomeStatement(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31));
+		BalanceSheetDto balance = client.balanceSheet(LocalDate.of(2026, 6, 30));
+
+		assertThat(income.revenue().get(0).amount()).isEqualByComparingTo("10.00");
+		assertThat(balance.difference()).isEqualByComparingTo("0");
+	}
+
 }

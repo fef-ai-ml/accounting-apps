@@ -128,4 +128,13 @@ public class AccountingApiClient {
 				.retrieve().body(GeneralLedgerDto.class);
 	}
 
+	public IncomeStatementDto incomeStatement(LocalDate from, LocalDate to) {
+		return client.get().uri(PATH + "/reports/income-statement?from={from}&to={to}", from, to).retrieve()
+				.body(IncomeStatementDto.class);
+	}
+
+	public BalanceSheetDto balanceSheet(LocalDate asOf) {
+		return client.get().uri(PATH + "/reports/balance-sheet?asOf={asOf}", asOf).retrieve().body(BalanceSheetDto.class);
+	}
+
 }

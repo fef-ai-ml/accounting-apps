@@ -47,6 +47,16 @@ public class ReportsViewModel {
 
 	private GeneralLedgerDto ledger;
 
+	private LocalDate incomeFrom = today.withDayOfYear(1);
+
+	private LocalDate incomeTo = today;
+
+	private IncomeStatementDto income;
+
+	private LocalDate balanceAsOf = today;
+
+	private BalanceSheetDto balance;
+
 	@Init
 	public void init() {
 		try {
@@ -91,6 +101,48 @@ public class ReportsViewModel {
 	@Command
 	public void exportLedger() {
 		Filedownload.save(Csv.generalLedger(ledger), CSV, Csv.generalLedgerFileName(ledger));
+	}
+
+	@Command
+	@NotifyChange({ "income", "incomeLines", "incomeHeading" })
+	public void runIncomeStatement() {
+		if (incomeFrom == null || incomeTo == null) {
+			Clients.showNotification("Choose a date range", "warning", null, "middle_center", 3000);
+			return;
+		}
+		try {
+			income = accountingApiClient.incomeStatement(incomeFrom, incomeTo);
+		}
+		catch (RuntimeException ex) {
+			income = null;
+			ApiErrors.show(ex);
+		}
+	}
+
+	@Command
+	public void exportIncomeStatement() {
+		Filedownload.save(Csv.incomeStatement(income), CSV, "income-statement-" + income.from() + "-" + income.to() + ".csv");
+	}
+
+	@Command
+	@NotifyChange({ "balance", "balanceLines", "balanceHeading" })
+	public void runBalanceSheet() {
+		if (balanceAsOf == null) {
+			Clients.showNotification("Choose a date", "warning", null, "middle_center", 3000);
+			return;
+		}
+		try {
+			balance = accountingApiClient.balanceSheet(balanceAsOf);
+		}
+		catch (RuntimeException ex) {
+			balance = null;
+			ApiErrors.show(ex);
+		}
+	}
+
+	@Command
+	public void exportBalanceSheet() {
+		Filedownload.save(Csv.balanceSheet(balance), CSV, "balance-sheet-" + balance.asOf() + ".csv");
 	}
 
 	private void loadTrialBalance() {
@@ -173,6 +225,56 @@ public class ReportsViewModel {
 
 	public String getLedgerClosing() {
 		return ledger == null ? "" : "Closing balance " + Idr.format(ledger.closingBalance());
+	}
+
+	public LocalDate getIncomeFrom() {
+		return incomeFrom;
+	}
+
+	public void setIncomeFrom(LocalDate incomeFrom) {
+		this.incomeFrom = incomeFrom;
+	}
+
+	public LocalDate getIncomeTo() {
+		return incomeTo;
+	}
+
+	public void setIncomeTo(LocalDate incomeTo) {
+		this.incomeTo = incomeTo;
+	}
+
+	public IncomeStatementDto getIncome() {
+		return income;
+	}
+
+	public List<ReportLine> getIncomeLines() {
+		return income == null ? List.of() : ReportLines.of(income);
+	}
+
+	/** From the response, not the inputs: the input boxes may have changed since the report ran. */
+	public String getIncomeHeading() {
+		return income == null ? "" : income.from() + " to " + income.to();
+	}
+
+	public LocalDate getBalanceAsOf() {
+		return balanceAsOf;
+	}
+
+	public void setBalanceAsOf(LocalDate balanceAsOf) {
+		this.balanceAsOf = balanceAsOf;
+	}
+
+	public BalanceSheetDto getBalance() {
+		return balance;
+	}
+
+	public List<ReportLine> getBalanceLines() {
+		return balance == null ? List.of() : ReportLines.of(balance);
+	}
+
+	/** From the response, not the inputs: the input box may have changed since the report ran. */
+	public String getBalanceHeading() {
+		return balance == null ? "" : "As of " + balance.asOf();
 	}
 
 }
