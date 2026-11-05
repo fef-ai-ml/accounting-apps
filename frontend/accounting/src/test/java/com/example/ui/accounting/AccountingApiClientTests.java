@@ -142,4 +142,24 @@ class AccountingApiClientTests {
 		assertThat(balance.difference()).isEqualByComparingTo("0");
 	}
 
+	@Test
+	void closingAndReopeningAYearSendTheirBodies() {
+		server.expect(requestTo(BASE + "/years/2026")).andRespond(withSuccess("""
+				{"year": 2026, "closed": true, "entryId": 9, "entryNo": "JE-2026-000009"}
+				""", MediaType.APPLICATION_JSON));
+		server.expect(requestTo(BASE + "/years/2026/close")).andExpect(method(HttpMethod.POST))
+				.andExpect(content().json("{\"retainedEarningsAccountId\": 5}"))
+				.andRespond(withSuccess("""
+						{"year": 2026, "entryId": 9, "entryNo": "JE-2026-000009", "netProfit": "-20.00"}
+						""", MediaType.APPLICATION_JSON));
+		server.expect(requestTo(BASE + "/years/2026/reopen")).andExpect(method(HttpMethod.POST))
+				.andExpect(content().json("{\"reason\": \"late\"}"))
+				.andRespond(withSuccess("""
+						{"year": 2026, "closed": false}
+						""", MediaType.APPLICATION_JSON));
+
+		assertThat(client.yearStatus(2026).entryNo()).isEqualTo("JE-2026-000009");
+		assertThat(client.closeYear(2026, 5).netProfit()).isEqualByComparingTo("-20.00");
+		assertThat(client.reopenYear(2026, "late").closed()).isFalse();
+	}
 }

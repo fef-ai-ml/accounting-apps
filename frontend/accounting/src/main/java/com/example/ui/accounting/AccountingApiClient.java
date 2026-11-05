@@ -71,6 +71,19 @@ public class AccountingApiClient {
 				.body(PeriodDto.class);
 	}
 
+	public YearStatusDto yearStatus(int year) {
+		return client.get().uri(PATH + "/years/{year}", year).retrieve().body(YearStatusDto.class);
+	}
+
+	public YearCloseResultDto closeYear(int year, long retainedEarningsAccountId) {
+		return client.post().uri(PATH + "/years/{year}/close", year).body(Map.of("retainedEarningsAccountId", retainedEarningsAccountId))
+				.retrieve().body(YearCloseResultDto.class);
+	}
+
+	public YearStatusDto reopenYear(int year, String reason) {
+		return client.post().uri(PATH + "/years/{year}/reopen", year).body(Map.of("reason", reason)).retrieve().body(YearStatusDto.class);
+	}
+
 	public EntryPageDto entries(EntryFilter filter) {
 		return client.get().uri(uri -> uri.path(ENTRIES)
 				.queryParamIfPresent("from", Optional.ofNullable(filter.from()))

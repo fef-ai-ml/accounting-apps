@@ -59,6 +59,7 @@ import com.example.ui.accounting.ReverseResultDto;
 import com.example.ui.accounting.SettingsDto;
 import com.example.ui.accounting.StatementRowDto;
 import com.example.ui.accounting.TrialBalanceDto;
+import com.example.ui.accounting.YearStatusDto;
 import com.example.ui.common.CurrentUser;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -675,6 +676,137 @@ class AccountingClickPathTests {
 		zk.click(zk.button("Close"));
 
 		assertThat(zk.response).contains("This period still has drafts");
+	}
+
+	private static final AccountDto RETAINED = new AccountDto(9L, "3200", "Laba Ditahan", "EQUITY", null, true, true);
+
+	private static final AccountDto CAPITAL = new AccountDto(10L, "3100", "Modal", "EQUITY", null, true, true);
+
+	private static final int YEAR = TODAY.getYear();
+
+	private void aYear(boolean closed, String net) {
+		when(api.periods(anyInt())).thenReturn(List.of(new PeriodDto(3L, YEAR, 3, LocalDate.of(YEAR, 3, 1), LocalDate.of(YEAR, 3, 31),
+				closed ? "CLOSED" : "OPEN", null)));
+		when(api.yearStatus(anyInt())).thenReturn(new YearStatusDto(YEAR, closed, closed ? 9L : null, closed ? "JE-1" : null));
+		when(api.accounts()).thenReturn(List.of(KAS, CAPITAL, RETAINED));
+		when(api.incomeStatement(eq(LocalDate.of(YEAR, 1, 1)), eq(LocalDate.of(YEAR, 12, 31)))).thenReturn(new IncomeStatementDto(
+				LocalDate.of(YEAR, 1, 1), LocalDate.of(YEAR, 12, 31), List.of(), List.of(), BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal(net)));
+	}
+
+	private Textbox shownTextbox() {
+		return zk.all(Textbox.class).stream().filter(AccountingClickPathTests::shown).filter(box -> !(box instanceof Combobox)).findFirst().orElseThrow();
+	}
+
+	@Test
+	void closingAYearStatesTheNetDefaultsTheAccountAndAsksFirst() throws Exception {
+		aYear(false, "700.00");
+		page("periods.zul");
+		assertThat(shown(zk.button("Close year"))).isTrue();
+		assertThat(shown(zk.button("Reopen year"))).isFalse();
+
+		zk.click(zk.button("Close year"));
+		verify(api, never()).closeYear(anyInt(), anyLong());
+		assertThat(zk.all(Label.class)).extracting(Label::getValue).contains("Close " + YEAR + ": net profit 700,00 moves to the account below");
+		Combobox account = zk.all(Combobox.class).stream().filter(AccountingClickPathTests::shown).findFirst().orElseThrow();
+		assertThat(account.getValue()).isEqualTo("3200 Laba Ditahan");
+
+		zk.click(zk.button("Confirm close"));
+		verify(api).closeYear(YEAR, 9L);
+		assertThat(shown(zk.button("Confirm close"))).isFalse();
+	}
+
+	@Test
+	void aLossIsStatedAsALossAndAnotherAccountCanBeChosen() throws Exception {
+		aYear(false, "-200.00");
+		page("periods.zul");
+
+		zk.click(zk.button("Close year"));
+		assertThat(zk.all(Label.class)).extracting(Label::getValue).contains("Close " + YEAR + ": net loss 200,00 moves to the account below");
+		Combobox account = zk.all(Combobox.class).stream().filter(AccountingClickPathTests::shown).findFirst().orElseThrow();
+		assertThat(account.getModel().getSize()).as("only equity accounts are offered").isEqualTo(2);
+
+		zk.change(account, CAPITAL.getLabel());
+		zk.click(zk.button("Confirm close"));
+		verify(api).closeYear(YEAR, 10L);
+	}
+
+	@Test
+	void anAccountThatMatchesNothingWarnsAndDoesNotClose() throws Exception {
+		aYear(false, "700.00");
+		page("periods.zul");
+		zk.click(zk.button("Close year"));
+
+		zk.change(zk.all(Combobox.class).stream().filter(AccountingClickPathTests::shown).findFirst().orElseThrow(), "nope");
+		zk.click(zk.button("Confirm close"));
+
+		assertThat(zk.response).contains("Choose an equity account");
+		verify(api, never()).closeYear(anyInt(), anyLong());
+	}
+
+	@Test
+	void aRefusedCloseShowsTheProblemAndKeepsThePanel() throws Exception {
+		aYear(false, "700.00");
+		when(api.closeYear(anyInt(), anyLong())).thenThrow(problem(HttpStatus.CONFLICT, "year-has-drafts", "Post or delete the 2 draft entries"));
+		page("periods.zul");
+		zk.click(zk.button("Close year"));
+
+		zk.click(zk.button("Confirm close"));
+
+		assertThat(zk.response).contains("Post or delete the 2 draft entries");
+		assertThat(shown(zk.button("Confirm close"))).isTrue();
+	}
+
+	@Test
+	void changingTheYearDropsAnOpenClosePanel() throws Exception {
+		aYear(false, "700.00");
+		page("periods.zul");
+		zk.click(zk.button("Close year"));
+		assertThat(shown(zk.button("Confirm close"))).isTrue();
+
+		zk.change(zk.all(Intbox.class).get(0), YEAR - 1);
+
+		assertThat(shown(zk.button("Confirm close"))).isFalse();
+		verify(api, never()).closeYear(anyInt(), anyLong());
+	}
+
+	@Test
+	void aFailedNetLoadShowsTheProblemAndOpensNoPanel() throws Exception {
+		aYear(false, "700.00");
+		when(api.incomeStatement(any(), any())).thenThrow(problem(HttpStatus.BAD_REQUEST, "validation", "Reports are down"));
+		page("periods.zul");
+
+		zk.click(zk.button("Close year"));
+
+		assertThat(zk.response).contains("Reports are down");
+		assertThat(shown(zk.button("Confirm close"))).isFalse();
+	}
+
+	@Test
+	void reopeningAClosedYearNeedsAReasonAndHidesMonthReopen() throws Exception {
+		aYear(true, "700.00");
+		page("periods.zul");
+		assertThat(shown(zk.button("Close year"))).isFalse();
+		assertThat(rowButtons(zk.all(Listitem.class).get(0))).isEmpty();
+		assertThat(zk.all(Label.class)).extracting(Label::getValue).contains("Closed by JE-1");
+
+		zk.click(zk.button("Reopen year"));
+		zk.click(zk.button("Confirm year reopen"));
+		assertThat(zk.response).contains("Enter a reason");
+		verify(api, never()).reopenYear(anyInt(), anyString());
+
+		zk.change(shownTextbox(), "late invoice");
+		zk.click(zk.button("Confirm year reopen"));
+		verify(api).reopenYear(YEAR, "late invoice");
+	}
+
+	@Test
+	void withoutThePermissionNoYearActionIsOffered() throws Exception {
+		aYear(false, "700.00");
+		can("accounting:read");
+		page("periods.zul");
+
+		assertThat(shown(zk.button("Close year"))).isFalse();
+		assertThat(shown(zk.button("Reopen year"))).isFalse();
 	}
 
 	@Test
