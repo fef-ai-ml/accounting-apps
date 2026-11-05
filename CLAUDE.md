@@ -151,6 +151,9 @@ micro-frontends are in `README.md`; read it first. This file holds only what is 
 - Verified 2026-11-03 (`./mvnw verify`): ledger hardening, including no hard deletes as `app_runtime` and as the
   owner, a migration over existing Phase 1 data, and the delete-versus-post race. README rows 37-40 are still to be
   done by hand.
+- Verified 2026-11-05 (`./mvnw verify`): income statement, balance sheet and year-end close, including close and reopen
+  racing each other and posts, and the bookkeeper and accountant path with real signed tokens. The close over a database
+  migrated from Phase 1 is checked in raw SQL only. README rows 41-46 are still to be done by hand.
 - Verified 2026-10-28 by hand against Keycloak 26.8.1 on the home-lab (README "Manual end-to-end check" rows 1–6):
   login redirect, viewer/editor/admin permissions in the UI, logout back to the Keycloak login page, 401 + Bearer from
   the API.
