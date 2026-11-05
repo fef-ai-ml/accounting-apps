@@ -124,6 +124,27 @@ public class YearEndService {
 		return new YearCloseResponse(year, closing.getId(), closing.getEntryNo(), net);
 	}
 
+	/** The other months stay closed until reopened one by one, which the year having no active close now allows. */
+	public YearStatus reopen(int year, String reason) {
+		settings.lock();
+		JournalEntry active = entries.findActiveClose(year)
+				.orElseThrow(() -> AccountingException.conflict("year-not-closed", year + " has no close to undo"));
+		if (entries.countActiveClosesAfter(year) > 0) {
+			throw AccountingException.conflict("later-year-closed", "Reopen the later years first");
+		}
+		JournalEntry closing = journal.loadForChange(active.getId());
+		journal.checkAccountsUsable(closing.getLines().stream().map(JournalLine::getAccountId).toList());
+		FiscalPeriod december = periods.lockForClosing(closing.getPeriodId())
+				.orElseThrow(() -> new AccountingNotFoundException("Period " + closing.getPeriodId()));
+		// The posting guard needs an open period; this flush puts OPEN in the database before the post.
+		december.reopen();
+		periods.saveAndFlush(december);
+		JournalEntry reversal = posting.postReversal(closing, closing.getEntryDate(), december);
+		audit.record(AuditAction.YEAR_REOPEN, "journal_entry", closing.getId(), Map.of("year", year, "entryNo", closing.getEntryNo(),
+				"reversalEntryNo", reversal.getEntryNo(), "reason", reason));
+		return new YearStatus(year, false, null, null);
+	}
+
 	/** A credit for a positive amount and a debit for a negative one: the side that takes a debit balance to zero. */
 	private static Side towardZero(BigDecimal amount) {
 		return amount.signum() > 0 ? new Side(ZERO, amount) : new Side(amount.negate(), ZERO);

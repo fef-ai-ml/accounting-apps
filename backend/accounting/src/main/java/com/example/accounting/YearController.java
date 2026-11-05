@@ -32,4 +32,10 @@ public class YearController {
 		return service.close(year, request.retainedEarningsAccountId());
 	}
 
+	@PostMapping("/{year}/reopen")
+	@PreAuthorize("hasAuthority('accounting:period-manage')")
+	public YearStatus reopen(@PathVariable int year, @Valid @RequestBody ReopenRequest request) {
+		return service.reopen(year, request.reason());
+	}
+
 }
