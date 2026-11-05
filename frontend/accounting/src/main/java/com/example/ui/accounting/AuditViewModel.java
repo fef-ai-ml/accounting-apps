@@ -92,7 +92,8 @@ public class AuditViewModel {
 	}
 
 	public List<String> getActions() {
-		return List.of("", "SETUP", "POST", "REVERSE", "PERIOD_CLOSE", "PERIOD_REOPEN", "SETTING_CHANGE", "ACCOUNT_CHANGE");
+		return List.of("", "SETUP", "POST", "REVERSE", "PERIOD_CLOSE", "PERIOD_REOPEN", "SETTING_CHANGE", "ACCOUNT_CHANGE", "YEAR_CLOSE",
+				"YEAR_REOPEN");
 	}
 
 	public int getPage() {

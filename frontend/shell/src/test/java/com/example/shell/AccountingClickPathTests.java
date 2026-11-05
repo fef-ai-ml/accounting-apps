@@ -158,7 +158,7 @@ class AccountingClickPathTests {
 		return new EntryDto(id, number, LocalDate.of(2026, 3, 15), 1L, "R", "Desc", status, null, null, "A", "B", version,
 				new BigDecimal("100.00"), List.of(new LineDto(1, 2L, new BigDecimal("100.00"), null, ""),
 						new LineDto(2, 4L, null, new BigDecimal("100.00"), "")),
-				false);
+				false, null);
 	}
 
 	private static HttpClientErrorException problem(HttpStatus status, String code, String detail) {
@@ -383,6 +383,27 @@ class AccountingClickPathTests {
 		assertThat(dialogText()).isEqualTo("Post a reversal of JE-1 dated " + TODAY + "? This cannot be undone.");
 		zk.click(zk.button("Yes"));
 		verify(api).reverseEntry(7L, TODAY, false);
+	}
+
+	@Test
+	void aClosingEntryIsLabelledAndOffersNoReversal() throws Exception {
+		EntryDto closing = new EntryDto(7L, "JE-2026-000009", LocalDate.of(2026, 12, 31), 1L, null, "Closing entry for 2026", "POSTED", null,
+				null, "A", "B", 1L, new BigDecimal("100.00"), List.of(new LineDto(1, 2L, new BigDecimal("100.00"), null, ""),
+						new LineDto(2, 4L, null, new BigDecimal("100.00"), "")),
+				false, 2026);
+		openEntry(closing);
+
+		assertThat(zk.all(Label.class).stream().filter(AccountingClickPathTests::shown)).extracting(Label::getValue).contains("Closing entry");
+		assertThat(shown(zk.button("Reverse"))).isFalse();
+		assertThat(shown(zk.button("Reverse & copy to draft"))).isFalse();
+	}
+
+	@Test
+	void anOrdinaryPostedEntryStillOffersReversalAndNoLabel() throws Exception {
+		openEntry(entry(7L, "JE-1", "POSTED", 1L));
+
+		assertThat(zk.all(Label.class).stream().filter(AccountingClickPathTests::shown)).extracting(Label::getValue).doesNotContain("Closing entry");
+		assertThat(shown(zk.button("Reverse"))).isTrue();
 	}
 
 	@Test
