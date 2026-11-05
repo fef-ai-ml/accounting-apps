@@ -1,5 +1,6 @@
 package com.example.accounting;
 
+import java.time.LocalDate;
 import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
@@ -16,5 +17,24 @@ interface JournalEntryRepository extends JpaRepository<JournalEntry, Long>, JpaS
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("select e from JournalEntry e where e.id = :id")
 	Optional<JournalEntry> lockForChange(@Param("id") long id);
+
+	/** A reversed close is REVERSED and its reversal has reversalOf set, so neither matches. */
+	@Query("""
+			select e from JournalEntry e where e.closingYear = :year
+			and e.status = com.example.accounting.EntryStatus.POSTED and e.reversalOf is null
+			""")
+	Optional<JournalEntry> findActiveClose(@Param("year") int year);
+
+	@Query("""
+			select count(e) from JournalEntry e where e.closingYear > :year
+			and e.status = com.example.accounting.EntryStatus.POSTED and e.reversalOf is null
+			""")
+	long countActiveClosesAfter(@Param("year") int year);
+
+	@Query("""
+			select count(e) from JournalEntry e where e.status = com.example.accounting.EntryStatus.DRAFT
+			and e.entryDate between :from and :to
+			""")
+	long countDraftsBetween(@Param("from") LocalDate from, @Param("to") LocalDate to);
 
 }

@@ -103,6 +103,14 @@ public class PostingService {
 		return entries.saveAndFlush(copy).getId();
 	}
 
+	/** Numbers and posts an entry the system built; no maker/checker. The caller holds its period, which must be open. */
+	public void postDirectly(JournalEntry entry) {
+		Actor actor = Actor.current();
+		// Lines cannot be added to a posted entry, so it goes in as a draft first.
+		entries.saveAndFlush(entry);
+		assignNumberAndPost(entry, actor);
+	}
+
 	/** Holds the period FOR SHARE until commit, so a close either waits for this post or this post sees it closed. */
 	private FiscalPeriod lockOpenPeriod(LocalDate date) {
 		FiscalPeriod period = periods.lockForPosting(date.getYear(), date.getMonthValue())

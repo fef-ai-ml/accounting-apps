@@ -118,7 +118,10 @@ public class JournalService {
 		entry.markDeleted(Actor.current(), clock.instant());
 	}
 
-	/** Lock order everywhere is entry, then period, then sequence; closing a period takes no entry locks, so no cycle. */
+	/**
+	 * Lock order everywhere is entry, then period, then sequence; closing a period takes no entry locks, so no cycle. Year
+	 * actions take the settings row before any of these.
+	 */
 	public JournalEntry loadForChange(long id) {
 		return entries.lockForChange(id).orElseThrow(() -> new AccountingNotFoundException("Journal entry " + id));
 	}

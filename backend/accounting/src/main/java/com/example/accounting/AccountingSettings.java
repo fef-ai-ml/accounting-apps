@@ -18,8 +18,16 @@ class AccountingSettings {
 	}
 
 	Settings require() {
-		return current().orElseThrow(() -> AccountingException.unprocessable("not-initialized",
-				"Accounting has not been set up for this company yet"));
+		return current().orElseThrow(AccountingSettings::notInitialized);
+	}
+
+	/** Closing and reopening a year start here, so they run one at a time in a tenant. */
+	Settings lock() {
+		return repository.lockCurrent().orElseThrow(AccountingSettings::notInitialized);
+	}
+
+	private static AccountingException notInitialized() {
+		return AccountingException.unprocessable("not-initialized", "Accounting has not been set up for this company yet");
 	}
 
 }

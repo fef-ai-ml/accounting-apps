@@ -28,6 +28,11 @@ interface FiscalPeriodRepository extends JpaRepository<FiscalPeriod, Long> {
 	@Query("select p from FiscalPeriod p where p.id = :id")
 	Optional<FiscalPeriod> lockForClosing(@Param("id") long id);
 
+	/** A post holds its period FOR SHARE, so it finishes first and is counted, or waits and then sees CLOSED. */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select p from FiscalPeriod p where p.year = :year order by p.month")
+	List<FiscalPeriod> lockYear(@Param("year") int year);
+
 	@Query(nativeQuery = true, value = """
 			select count(*) from accounting.journal_entry
 			where period_id = :id and status = 'DRAFT' and deleted_at is null
