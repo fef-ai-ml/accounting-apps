@@ -136,6 +136,12 @@ Use a private browser window per user, at `http://localhost:8081`:
 | 38 | As an admin, rename an account, then open **Audit** and filter by `ACCOUNT_CHANGE`. Also change the type and the postable flag of a fresh account with no journal lines (on an account with lines these two fail with 409 `account-in-use`) | One row per change, with your name, Jakarta time and `name: old → new` (likewise for type and postable) |
 | 39 | As `bookkeeper`, create a balanced draft. Save it as `accountant`, then save it again as `bookkeeper`. Open it as `accountant`, then as `admin` | `accountant`, who is neither its creator nor its last editor, sees "You prepared or edited this entry; another user must post it" and cannot post; `admin` can post |
 | 40 | Save a draft with changed lines, delete another draft, then query `select count(*) from accounting.journal_line where deleted_at is not null` as `app` | The count grew; neither draft's old lines show on any screen |
+| 41 | As `accountant`, post a sale and an expense, then open **Reports > Income statement** and **Balance sheet**, and press Run on each | Revenue and expenses indent by the chart's hierarchy; net profit is right; the balance sheet shows a difference of 0,00, with the profit on "Earnings not yet closed" |
+| 42 | Post a depreciation entry to `1290 Akumulasi Penyusutan`, then run the balance sheet and export its CSV | `1290` shows as a negative within assets, on screen and in the file; the file opens in Excel with one row per line |
+| 43 | Clear a date box on **Income statement** and press Run | A warning asks for a date range; the previous figures stay |
+| 44 | As `accountant`, on **Periods** press **Close year**, check the stated net and the default account `3200 Laba Ditahan`, then confirm | Every month shows CLOSED and "Closed by JE-..." appears; the income statement for the year still shows the same net; the balance sheet at 31 December shows it on `3200`, with a difference of 0,00; **Audit** has a `YEAR_CLOSE` row |
+| 45 | Open the closing entry from **Journal**, then press **Reopen year** on **Periods** with a reason, post a late invoice dated in December and close the year again | The entry says "Closing entry" and offers no Reverse; reopening opens December only; the second close includes the invoice; the journal keeps both closes and the reversal; **Audit** has a `YEAR_REOPEN` row with the reason |
+| 46 | As `bookkeeper`, open **Periods** | No **Close year** or **Reopen year** button |
 
 If you are sent back to the login page after every login, the shell log shows `API call unauthorized` with the
 backend's `WWW-Authenticate` reason (usually an issuer mismatch, see above).
@@ -230,14 +236,13 @@ Drafts that existed before the migration only know their creator and last editor
 
 ## Accounting
 
-Phase 1 of the accounting module (`backend/accounting`, schema `accounting`): a chart of accounts copied from a
-template at setup, journal entries that go draft -> post -> reverse with maker/checker, gapless `JE-<year>-<6 digits>`
-numbers per tenant and year, monthly periods, a trial balance and a general ledger. The API is also in Swagger UI
-(`/swagger-ui.html`).
+The accounting module (`backend/accounting`, schema `accounting`): a chart of accounts copied from a template at setup,
+journal entries that go draft -> post -> reverse with maker/checker, gapless `JE-<year>-<6 digits>` numbers per tenant
+and year, monthly periods, a trial balance, a general ledger, an income statement, a balance sheet, and a year-end close
+into retained earnings. The API is also in Swagger UI (`/swagger-ui.html`).
 
 `frontend/accounting` adds four screens to the shell: **Journal** (filtered, paged list), **Accounts** (setup from the
-template, settings, chart of accounts), **Periods** (close, reopen, open a year) and **Reports** (trial balance and
-general ledger, both with CSV export). The entry form is a modal window, opened from the Journal list with "New entry"
+template, settings, chart of accounts), **Periods** (close, reopen, open a year, close and reopen a whole year) and **Reports** (trial balance, general ledger, income statement and balance sheet, each with CSV export). The entry form is a modal window, opened from the Journal list with "New entry"
 or a row, and from Periods when closing a month is blocked by a draft; the shell does not know about it.
 
 | Method and path | Permission | Notes |
@@ -255,9 +260,18 @@ or a row, and from Periods when closing a month is blocked by a draft; the shell
 | `POST /api/accounting/journal-entries/{id}/post`, `/reverse` | `post` | `post` takes the required `?version=` the checker reviewed (409 `version-conflict` if the draft changed); reverse body `{date, copyToDraft}`, and the date cannot precede the original entry |
 | `GET /api/accounting/reports/trial-balance?asOf=` | `read` | Totals and difference |
 | `GET /api/accounting/reports/general-ledger?accountId&from&to` | `read` | Opening, running and closing balance |
+| `GET /api/accounting/reports/income-statement?from&to` | `read` | Both dates required; leaves out closing entries and their reversals |
+| `GET /api/accounting/reports/balance-sheet?asOf=` | `read` | `asOf` defaults to today; equity ends with the calculated "Earnings not yet closed" |
+| `GET /api/accounting/years/{year}` | `read` | Whether the year has an active close, with that entry's id and number |
+| `POST /api/accounting/years/{year}/close` | `period-manage` | Body `{retainedEarningsAccountId}`; posts a closing entry at once and closes every month. 422 `no-period`, `account-not-postable`, `bad-retained-earnings-account`; 409 `year-closed`, `year-has-drafts`, `earlier-year-open`, `nothing-to-close` |
+| `POST /api/accounting/years/{year}/reopen` | `period-manage` | Body `{reason}`; reverses the closing entry and opens December. 409 `year-not-closed`, `later-year-closed`; 422 `account-not-postable` |
 | `GET /api/accounting/audit?from&to&action&page&size` | `audit-read` | Paged, `size` default 50 |
 
 Amounts are JSON strings with two decimals (`"1665000.00"`). Every error carries a stable `code`.
+
+A close is a real journal entry marked with `closing_year`, so the trial balance and general ledger show it as usual, and a
+trial balance for 31 December after a close shows zero revenue and expense. Reversing a closing entry is refused with 409
+`closing-entry`, and reopening a month of a closed year with 409 `year-closed`: only reopening the year undoes a close.
 
 ## Add a feature module
 
