@@ -58,7 +58,7 @@ class YearEndConcurrencyTests extends YearEndTestSupport {
 			assertHeld(held);
 			Future<MockHttpServletResponse> closing = pool.submit(() -> closeYear(YEAR).andReturn().getResponse());
 			Thread.sleep(3000);
-			assertThat(closing.isDone()).as("the close waits for the post's lock on December").isFalse();
+			assertThat(closing.isDone()).as("the close waits for the post's hold on the December period").isFalse();
 			release.countDown();
 			poster.get();
 			MockHttpServletResponse response = closing.get();
@@ -80,7 +80,7 @@ class YearEndConcurrencyTests extends YearEndTestSupport {
 							.contentType(MediaType.APPLICATION_JSON).content("{\"date\": \"" + YEAR + "-06-15\"}"))
 					.andReturn().getResponse());
 			Thread.sleep(3000);
-			assertThat(reversing.isDone()).as("the reversal waits for the close's lock on June").isFalse();
+			assertThat(reversing.isDone()).as("the reversal waits for the close's locks (June period, entry sequence)").isFalse();
 			release.countDown();
 			closing.get();
 			assertThat(reversing.get().getStatus()).isEqualTo(422);
@@ -125,7 +125,7 @@ class YearEndConcurrencyTests extends YearEndTestSupport {
 			assertHeld(held);
 			Future<MockHttpServletResponse> closing = pool.submit(() -> closeYear(YEAR).andReturn().getResponse());
 			Thread.sleep(3000);
-			assertThat(closing.isDone()).as("the close waits on the settings row").isFalse();
+			assertThat(closing.isDone()).as("the close waits for the reopen's locks (settings row, earlier periods)").isFalse();
 			release.countDown();
 			reopening.get();
 			assertThat(closing.get().getStatus()).isEqualTo(409);
@@ -147,7 +147,7 @@ class YearEndConcurrencyTests extends YearEndTestSupport {
 			assertHeld(held);
 			Future<MockHttpServletResponse> reopening = pool.submit(() -> reopenYear(earlier, "late").andReturn().getResponse());
 			Thread.sleep(3000);
-			assertThat(reopening.isDone()).as("the reopen waits on the settings row").isFalse();
+			assertThat(reopening.isDone()).as("the reopen waits for the close's locks (settings row, earlier periods)").isFalse();
 			release.countDown();
 			closing.get();
 			assertThat(reopening.get().getStatus()).isEqualTo(409);

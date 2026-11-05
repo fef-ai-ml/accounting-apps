@@ -297,4 +297,17 @@ class YearCloseTests extends YearEndTestSupport {
 		}
 	}
 
+	@Test
+	void aYearOfEntriesWrittenWithoutTheServicesCloses() throws Exception {
+		long march = periodId(YEAR, 3);
+		inTransaction(() -> {
+			long entry = insertEntry(march, "DRAFT");
+			insertLine(entry, 1, cash, "100.00", "0");
+			insertLine(entry, 2, sales, "0", "100.00");
+			postBySql(entry);
+			return null;
+		});
+		closeYear(YEAR).andExpect(status().isOk()).andExpect(jsonPath("$.netProfit").value("100.00"));
+	}
+
 }

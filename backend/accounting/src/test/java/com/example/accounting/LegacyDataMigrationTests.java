@@ -173,11 +173,21 @@ class LegacyDataMigrationTests extends AccountingTestSupport {
 		String url = phase1Database("legacy_close");
 		long[] fixture;
 		long december;
+		long revenue;
+		long equity;
 		try (Connection legacy = connect(url); Statement statement = legacy.createStatement()) {
 			fixture = accountsAndPeriod(statement);
 			long original = posted(statement, fixture, "JE-1", null);
 			markReversed(statement, original, posted(statement, fixture, "JE-2", String.valueOf(original)));
-			posted(statement, fixture, "JE-3", null);
+			revenue = id(statement, "insert into accounting.account (tenant_id, code, name, type, postable, active) values ("
+					+ TENANT + ", 'R', 'R', 'REVENUE', true, true) returning id");
+			equity = id(statement, "insert into accounting.account (tenant_id, code, name, type, postable, active) values ("
+					+ TENANT + ", 'E', 'E', 'EQUITY', true, true) returning id");
+			// A Phase 1 sale: income the close has to move into equity.
+			long sale = id(statement, entry("DRAFT", null, "maker", "maker", fixture[2]));
+			statement.execute("insert into accounting.journal_line (tenant_id, entry_id, line_no, account_id, debit, credit) values ("
+					+ TENANT + ", " + sale + ", 1, " + fixture[0] + ", 1, 0), (" + TENANT + ", " + sale + ", 2, " + revenue + ", 0, 1)");
+			statement.execute("update accounting.journal_entry set status = 'POSTED', entry_no = 'JE-3' where id = " + sale);
 			statement.execute("insert into accounting.fiscal_period (tenant_id, year, month, start_date, end_date, status) select "
 					+ TENANT + ", 2026, m, make_date(2026, m, 1), cast(make_date(2026, m, 1) + interval '1 month - 1 day' as date), 'OPEN'"
 					+ " from generate_series(1, 12) m where m <> 3");
@@ -196,11 +206,13 @@ class LegacyDataMigrationTests extends AccountingTestSupport {
 					values (%s, '2026-12-31', %d, 'close', 'DRAFT', 2026, 's', 'n', now(), 's', 'n', now(), 0) returning id
 					""".formatted(TENANT, december));
 			statement.execute("insert into accounting.journal_line (tenant_id, entry_id, line_no, account_id, debit, credit) values ("
-					+ TENANT + ", " + closing + ", 1, " + fixture[1] + ", 1, 0), (" + TENANT + ", " + closing + ", 2, " + fixture[0] + ", 0, 1)");
+					+ TENANT + ", " + closing + ", 1, " + revenue + ", 1, 0), (" + TENANT + ", " + closing + ", 2, " + equity + ", 0, 1)");
 			statement.execute("update accounting.journal_entry set status = 'POSTED', entry_no = 'JE-4' where id = " + closing);
 			statement.execute("update accounting.fiscal_period set status = 'CLOSED'");
 			legacy.commit();
 			assertThat(text(statement, "select status from accounting.journal_entry where id = " + closing)).isEqualTo("POSTED");
+			assertThat(text(statement, "select coalesce(sum(l.debit - l.credit), 0) from accounting.journal_line l"
+					+ " where l.account_id = " + revenue + " and l.deleted_at is null")).isEqualTo("0.00");
 
 			statement.execute("update accounting.fiscal_period set status = 'OPEN' where id = " + december);
 			assertThatThrownBy(legacy::commit).hasMessageContaining("has an active close");
