@@ -34,4 +34,18 @@ public class ReportController {
 		return service.generalLedger(accountId, from, to);
 	}
 
+	@GetMapping("/income-statement")
+	@PreAuthorize("hasAuthority('accounting:read')")
+	public IncomeStatement incomeStatement(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+			@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+		return service.incomeStatement(from, to);
+	}
+
+	@GetMapping("/balance-sheet")
+	@PreAuthorize("hasAuthority('accounting:read')")
+	public BalanceSheet balanceSheet(
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOf) {
+		return service.balanceSheet(asOf);
+	}
+
 }
