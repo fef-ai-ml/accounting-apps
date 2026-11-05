@@ -90,7 +90,7 @@ public class PostingService {
 	}
 
 	/** Posts the mirror entry and marks the original. The caller has checked the accounts and holds the period, which is open. */
-	public JournalEntry postReversal(JournalEntry original, LocalDate date, FiscalPeriod period) {
+	JournalEntry postReversal(JournalEntry original, LocalDate date, FiscalPeriod period) {
 		JournalEntry reversal = new JournalEntry(date, period.getId(), original.getReference(),
 				"Reversal of " + original.getEntryNo(), Actor.current(), clock.instant());
 		reversal.reversalOf(original.getId());
@@ -111,7 +111,7 @@ public class PostingService {
 	}
 
 	/** Numbers and posts an entry the system built; no maker/checker. The caller holds its period, which must be open. */
-	public void postDirectly(JournalEntry entry) {
+	void postDirectly(JournalEntry entry) {
 		Actor actor = Actor.current();
 		// Lines cannot be added to a posted entry, so it goes in as a draft first.
 		entries.saveAndFlush(entry);
