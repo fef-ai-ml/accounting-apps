@@ -2,9 +2,16 @@ package com.example.accounting;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletResponse;
 
 import com.jayway.jsonpath.JsonPath;
 
@@ -19,6 +26,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class YearCloseTests extends YearEndTestSupport {
+
+	@Autowired
+	PostingService posting;
 
 	@Test
 	void aProfitMovesToRetainedEarningsAndEveryMonthCloses() throws Exception {
@@ -253,6 +263,38 @@ class YearCloseTests extends YearEndTestSupport {
 		mvc.perform(post("/api/accounting/years/" + YEAR + "/close").with(asTenant(UUID.randomUUID(), "o", PERIOD_MANAGE))
 						.contentType(MediaType.APPLICATION_JSON).content("{\"retainedEarningsAccountId\": 1}"))
 				.andExpect(problem(422, "not-initialized"));
+	}
+
+	@Test
+	void aCloseWaitsForAPostIntoAnEarlierYearAndIsRefused() throws Exception {
+		int earlier = YEAR - 1;
+		openPeriods(earlier);
+		sale(YEAR + "-03-10", "100.00");
+		long id = draft("maker", earlier + "-06-01", line(cash, "40.00", "0"), line(sales, "0", "40.00"));
+		long version = versionOf(id);
+		CountDownLatch held = new CountDownLatch(1);
+		CountDownLatch release = new CountDownLatch(1);
+		try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+			Future<?> poster = pool.submit(() -> inTenantTransaction(tenant, "checker", () -> {
+				posting.post(id, version);
+				held.countDown();
+				try {
+					release.await(30, TimeUnit.SECONDS);
+				}
+				catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+				}
+				return null;
+			}));
+			assertThat(held.await(30, TimeUnit.SECONDS)).isTrue();
+			Future<MockHttpServletResponse> closing = pool.submit(() -> closeYear(YEAR).andReturn().getResponse());
+			Thread.sleep(3000);
+			assertThat(closing.isDone()).as("the close waits for the post's lock on the earlier month").isFalse();
+			release.countDown();
+			poster.get();
+			assertThat(closing.get().getStatus()).isEqualTo(409);
+			assertThat(closing.get().getContentAsString()).contains("earlier-year-open");
+		}
 	}
 
 }

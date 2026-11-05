@@ -49,8 +49,10 @@ In one transaction:
 
 1. Lock the tenant's `settings` row `FOR UPDATE`. Close and reopen both start here, so all year actions in a tenant run one
    at a time. Without this, reopening 2025 while closing 2026 could leave 2026 closed on top of an open year.
-2. Lock the year's 12 periods `FOR UPDATE`, in month order. A post already holds its period `FOR SHARE`, so it either
-   finishes first and is counted, or waits and then sees `CLOSED`.
+2. Lock the periods of every earlier year and then the year's 12 periods `FOR UPDATE`, in year and month order. A post
+   already holds its period `FOR SHARE`, so it either finishes first and is counted, or waits and then sees `CLOSED`.
+   Without the earlier years, a post into an open earlier year could commit between the `earlier-year-open` check and the
+   balance read, and the closing entry would absorb it.
 3. Run the refusal checks.
 4. Add up each revenue and expense account's balance through 31 December, closing entries included. Build one entry dated
    31 December of the year, described `Closing entry for <year>`, with `closing_year` set:

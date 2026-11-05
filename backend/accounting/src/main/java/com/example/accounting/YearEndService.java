@@ -59,6 +59,7 @@ public class YearEndService {
 
 	public YearCloseResponse close(int year, long retainedEarningsAccountId) {
 		settings.lock();
+		periods.lockEarlierYears(year);
 		List<FiscalPeriod> months = periods.lockYear(year);
 		if (months.size() != 12) {
 			throw AccountingException.unprocessable("no-period", "The 12 periods of " + year + " do not exist");

@@ -33,6 +33,11 @@ interface FiscalPeriodRepository extends JpaRepository<FiscalPeriod, Long> {
 	@Query("select p from FiscalPeriod p where p.year = :year order by p.month")
 	List<FiscalPeriod> lockYear(@Param("year") int year);
 
+	/** A post into an earlier year finishes first and trips earlier-year-open, or waits until this close commits. */
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select p from FiscalPeriod p where p.year < :year order by p.year, p.month")
+	List<FiscalPeriod> lockEarlierYears(@Param("year") int year);
+
 	@Query(nativeQuery = true, value = """
 			select count(*) from accounting.journal_entry
 			where period_id = :id and status = 'DRAFT' and deleted_at is null
