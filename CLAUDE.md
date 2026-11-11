@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-ZK + Spring Boot skeleton. Architecture, run instructions and the guides for splitting modules into microservices /
+accounting-apps (formerly `zk-spring`), ZK + Spring Boot. Architecture, run instructions and the guides for splitting modules into microservices /
 micro-frontends are in `README.md`; read it first. This file holds only what is easy to get wrong.
 
 ## Stack

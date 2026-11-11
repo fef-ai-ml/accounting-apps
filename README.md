@@ -1,4 +1,7 @@
-# ZK + Spring Boot skeleton
+# accounting-apps
+
+The repository was called `zk-spring`. The Keycloak realm, the image names and the Maven artifactId keep that name, because
+the realm name is in every token issuer URI and a running Keycloak would need the same rename.
 
 Spring Boot 4.1 (Java 25), PostgreSQL, REST API backend and a ZK 10.3 frontend. ZK is wired into plain Spring Boot
 by hand (`frontend/common/.../ZkSupport.java`); the `zkspringboot` starter is not used, so Spring Boot and ZK
